@@ -69,6 +69,14 @@ Floating point classification
     and extended precision, and return a non 0 value is x has the signbit set
     (that is the number is negative).
 
+.. cfunction:: double npy_copysign(double x, double y)
+
+    This is a function equivalent to C99 copysign: return x with the same sign
+    as y. Works for any value, including inf and nan. Single and extended
+    precisions are available with suffix f and l.
+
+    .. versionadded:: 1.4.0
+
 Useful math constants
 ~~~~~~~~~~~~~~~~~~~~~
 
@@ -114,3 +122,61 @@ precision are also available by adding the F and L suffixes respectively.
 .. cvar:: NPY_2_PI
 
     Two times the reciprocal of pi (:math:`\frac{2}{\pi}`)
+
+.. cvar:: NPY_EULER
+
+    The Euler constant (:math:`\lim_{n\rightarrow \infty}{\sum_{k=1}^n{\frac{1}{k}} - \ln n}`)
+
+Low-level floating point manipulation
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Those can be useful for precise floating point comparison.
+
+.. cfunction:: double npy_nextafter(double x, double y)
+
+    This is a function equivalent to C99 nextafter: return next representable
+    floating point value from x in the direction of y. Single and extended
+    precisions are available with suffix f and l.
+
+    .. versionadded:: 1.4.0
+
+.. cfunction:: double npy_spacing(double x)
+
+    This is a function equivalent to Fortran intrinsic. Return distance between
+    x and next representable floating point value from x, e.g. spacing(1) ==
+    eps. spacing of nan and +/- inf return nan. Single and extended precisions
+    are available with suffix f and l.
+
+    .. versionadded:: 1.4.0
+
+Complex functions
+~~~~~~~~~~~~~~~~~
+
+.. versionadded:: 1.4.0
+
+C99-like complex functions have been added. Those can be used if you wish to
+implement portable C extensions. Since we still support platforms without C99
+complex type, you need to restrict to C90-compatible syntax, e.g.:
+
+.. code-block:: c
+
+        /* a = 1 + 2i \*/
+        npy_complex a = npy_cpack(1, 2);
+        npy_complex b;
+
+        b = npy_log(a);
+
+Linking against the core math library in an extension
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. versionadded:: 1.4.0
+
+To use the core math library in your own extension, you need to add the npymath
+compile and link options to your extension in your setup.py:
+
+        >>> from numpy.distutils.misc_utils import get_info
+        >>> info = get_info('npymath')
+        >>> config.add_extension('foo', sources=['foo.c'], extra_info=**info)
+
+In other words, the usage of info is exactly the same as when using blas_info
+and co.

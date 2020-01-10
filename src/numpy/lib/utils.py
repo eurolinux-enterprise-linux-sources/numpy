@@ -8,15 +8,15 @@ from numpy.core import product, ndarray
 
 __all__ = ['issubclass_', 'get_numpy_include', 'issubsctype',
            'issubdtype', 'deprecate', 'deprecate_with_doc',
-           'get_numarray_include',
-           'get_include', 'info', 'source', 'who', 'lookfor',
+           'get_numarray_include', 'get_include',
+           'info', 'source', 'who', 'lookfor',
            'byte_bounds', 'may_share_memory', 'safe_eval']
 
 def get_include():
     """
-    Return the directory that contains the numpy \\*.h header files.
+    Return the directory that contains the NumPy \\*.h header files.
 
-    Extension modules that need to compile against numpy should use this
+    Extension modules that need to compile against NumPy should use this
     function to locate the appropriate include directory.
 
     Notes
@@ -48,9 +48,24 @@ def get_numarray_include(type=None):
     Extension modules that need to compile against numarray should use this
     function to locate the appropriate include directory.
 
+    Parameters
+    ----------
+    type : any, optional
+        If `type` is not None, the location of the NumPy headers is returned
+        as well.
+
+    Returns
+    -------
+    dirs : str or list of str
+        If `type` is None, `dirs` is a string containing the path to the
+        numarray headers.
+        If `type` is not None, `dirs` is a list of strings with first the
+        path(s) to the numarray headers, followed by the path to the NumPy
+        headers.
+
     Notes
     -----
-    When using ``distutils``, for example in ``setup.py``.
+    Useful when using ``distutils``, for example in ``setup.py``.
     ::
 
         import numpy as np
@@ -80,67 +95,127 @@ else:
         func.__name__ = name
         return func
 
-def deprecate(func, oldname=None, newname=None):
-    """Deprecate old functions.
-    Issues a DeprecationWarning, adds warning to oldname's docstring,
-    rebinds oldname.__name__ and returns new function object.
+class _Deprecate(object):
+    """
+    Decorator class to deprecate old functions.
 
-    Example:
-    oldfunc = deprecate(newfunc, 'oldfunc', 'newfunc')
+    Refer to `deprecate` for details.
+
+    See Also
+    --------
+    deprecate
 
     """
+    def __init__(self, old_name=None, new_name=None, message=None):
+        self.old_name = old_name
+        self.new_name = new_name
+        self.message = message
 
-    import warnings
-    if oldname is None:
+    def __call__(self, func, *args, **kwargs):
+        """
+        Decorator call.  Refer to ``decorate``.
+
+        """
+        old_name = self.old_name
+        new_name = self.new_name
+        message = self.message
+
+        import warnings
+        if old_name is None:
+            try:
+                old_name = func.func_name
+            except AttributeError:
+                old_name = func.__name__
+        if new_name is None:
+            depdoc = "`%s` is deprecated!" % old_name
+        else:
+            depdoc = "`%s` is deprecated, use `%s` instead!" % \
+                     (old_name, new_name)
+
+        if message is not None:
+            depdoc += "\n" + message
+
+        def newfunc(*args,**kwds):
+            """`arrayrange` is deprecated, use `arange` instead!"""
+            warnings.warn(depdoc, DeprecationWarning)
+            return func(*args, **kwds)
+
+        newfunc = _set_function_name(newfunc, old_name)
+        doc = func.__doc__
+        if doc is None:
+            doc = depdoc
+        else:
+            doc = '\n\n'.join([depdoc, doc])
+        newfunc.__doc__ = doc
         try:
-            oldname = func.func_name
+            d = func.__dict__
         except AttributeError:
-            oldname = func.__name__
-    if newname is None:
-        str1 = "%s is deprecated" % (oldname,)
-        depdoc = "%s is DEPRECATED!!" % (oldname,)
-    else:
-        str1 = "%s is deprecated, use %s" % (oldname, newname),
-        depdoc = '%s is DEPRECATED!! -- use %s instead' % (oldname, newname,)
+            pass
+        else:
+            newfunc.__dict__.update(d)
+        return newfunc
 
-    def newfunc(*args,**kwds):
-        """Use get_include, get_numpy_include is DEPRECATED."""
-        warnings.warn(str1, DeprecationWarning)
-        return func(*args, **kwds)
+def deprecate(*args, **kwargs):
+    """
+    Issues a DeprecationWarning, adds warning to `old_name`'s
+    docstring, rebinds ``old_name.__name__`` and returns the new
+    function object.
 
-    newfunc = _set_function_name(newfunc, oldname)
-    doc = func.__doc__
-    if doc is None:
-        doc = depdoc
-    else:
-        doc = '\n\n'.join([depdoc, doc])
-    newfunc.__doc__ = doc
-    try:
-        d = func.__dict__
-    except AttributeError:
-        pass
-    else:
-        newfunc.__dict__.update(d)
-    return newfunc
+    This function may also be used as a decorator.
 
-def deprecate_with_doc(somestr):
-    """Decorator to deprecate functions and provide detailed documentation
-    with 'somestr' that is added to the functions docstring.
+    Parameters
+    ----------
+    func : function
+        The function to be deprecated.
+    old_name : str, optional
+        The name of the function to be deprecated. Default is None, in which
+        case the name of `func` is used.
+    new_name : str, optional
+        The new name for the function. Default is None, in which case
+        the deprecation message is that `old_name` is deprecated. If given,
+        the deprecation message is that `old_name` is deprecated and `new_name`
+        should be used instead.
+    message : str, optional
+        Additional explanation of the deprecation.  Displayed in the docstring
+        after the warning.
 
-    Example:
-    depmsg = 'function scipy.foo has been merged into numpy.foobar'
-    @deprecate_with_doc(depmsg)
-    def foo():
-        pass
+    Returns
+    -------
+    old_func : function
+        The deprecated function.
+
+    Examples
+    --------
+    Note that ``olduint`` returns a value after printing Deprecation Warning:
+
+    >>> olduint = np.deprecate(np.uint)
+    >>> olduint(6)
+    /usr/lib/python2.5/site-packages/numpy/lib/utils.py:114:
+    DeprecationWarning: uint32 is deprecated
+      warnings.warn(str1, DeprecationWarning)
+    6
 
     """
+    # Deprecate may be run as a function or as a decorator
+    # If run as a function, we initialise the decorator class
+    # and execute its __call__ method.
 
-    def _decorator(func):
-        newfunc = deprecate(func)
-        newfunc.__doc__ += "\n" + somestr
-        return newfunc
-    return _decorator
+    if args:
+        fn = args[0]
+        args = args[1:]
 
+        # backward compatibility -- can be removed
+        # after next release
+        if 'newname' in kwargs:
+            kwargs['new_name'] = kwargs.pop('newname')
+        if 'oldname' in kwargs:
+            kwargs['old_name'] = kwargs.pop('oldname')
+
+        return _Deprecate(*args, **kwargs)(fn)
+    else:
+        return _Deprecate(*args, **kwargs)
+
+deprecate_with_doc = lambda msg: _Deprecate(message=msg)
 get_numpy_include = deprecate(get_include, 'get_numpy_include', 'get_include')
 
 
@@ -162,7 +237,20 @@ def byte_bounds(a):
     (low, high) : tuple of 2 integers
         The first integer is the first byte of the array, the second integer is
         just past the last byte of the array.  If `a` is not contiguous it
-        would not use every byte between the (`low`, `high`) values.
+        will not use every byte between the (`low`, `high`) values.
+
+    Examples
+    --------
+    >>> I = np.eye(2, dtype='f'); I.dtype
+    dtype('float32')
+    >>> low, high = np.byte_bounds(I)
+    >>> high - low == I.size*I.itemsize
+    True
+    >>> I = np.eye(2, dtype='G'); I.dtype
+    dtype('complex192')
+    >>> low, high = np.byte_bounds(I)
+    >>> high - low == I.size*I.itemsize
+    True
 
     """
     ai = a.__array_interface__
@@ -186,13 +274,28 @@ def byte_bounds(a):
 
 
 def may_share_memory(a, b):
-    """Determine if two arrays can share memory
+    """
+    Determine if two arrays can share memory
 
     The memory-bounds of a and b are computed.  If they overlap then
     this function returns True.  Otherwise, it returns False.
 
     A return of True does not necessarily mean that the two arrays
     share any element.  It just means that they *might*.
+
+    Parameters
+    ----------
+    a, b : ndarray
+
+    Returns
+    -------
+    out : bool
+
+    Examples
+    --------
+    >>> np.may_share_memory(np.array([1,2]), np.array([5,8,9]))
+    False
+
     """
     a_low, a_high = byte_bounds(a)
     b_low, b_high = byte_bounds(b)
@@ -230,7 +333,17 @@ def who(vardict=None):
 
     Examples
     --------
-    >>> d = {'x': arange(2.0), 'y': arange(3.0), 'txt': 'Some str', 'idx': 5}
+    >>> a = np.arange(10)
+    >>> b = np.ones(20)
+    >>> np.who()
+    Name            Shape            Bytes            Type
+    ===========================================================
+    a               10               40               int32
+    b               20               160              float64
+    Upper bound on total bytes  =       200
+
+    >>> d = {'x': np.arange(2.0), 'y': np.arange(3.0), 'txt': 'Some str',
+    ... 'idx':5}
     >>> np.whos(d)
     Name            Shape            Bytes            Type
     ===========================================================
@@ -256,7 +369,7 @@ def who(vardict=None):
                 namestr = name
                 original=1
             shapestr = " x ".join(map(str, var.shape))
-            bytestr = str(var.itemsize*product(var.shape))
+            bytestr = str(var.nbytes)
             sta.append([namestr, shapestr, bytestr, var.dtype.name,
                         original])
 
@@ -349,24 +462,46 @@ def info(object=None,maxwidth=76,output=sys.stdout,toplevel='numpy'):
 
     Parameters
     ----------
-    object : optional
-        Input object to get information about.
+    object : object or str, optional
+        Input object or name to get information about. If `object` is a
+        numpy object, its docstring is given. If it is a string, available
+        modules are searched for matching objects.
+        If None, information about `info` itself is returned.
     maxwidth : int, optional
         Printing width.
-    output : file like object open for writing, optional
-        Write into file like object.
-    toplevel : string, optional
+    output : file like object, optional
+        File like object that the output is written to, default is ``stdout``.
+        The object has to be opened in 'w' or 'a' mode.
+    toplevel : str, optional
         Start search at this level.
+
+    See Also
+    --------
+    source, lookfor
+
+    Notes
+    -----
+    When used interactively with an object, ``np.info(obj)`` is equivalent to
+    ``help(obj)`` on the Python prompt or ``obj?`` on the IPython prompt.
 
     Examples
     --------
     >>> np.info(np.polyval) # doctest: +SKIP
-
        polyval(p, x)
-
-         Evaluate the polymnomial p at x.
-
+         Evaluate the polynomial p at x.
          ...
+
+    When using a string for `object` it is possible to get multiple results.
+
+    >>> np.info('fft') # doctest: +SKIP
+         *** Found in numpy ***
+    Core FFT routines
+    ...
+         *** Found in numpy.fft ***
+     fft(a, n=None, axis=-1)
+    ...
+         *** Repeat reference found in numpy.fft.fftpack ***
+         *** Total of 3 references found. ***
 
     """
     global _namedict, _dictlist
@@ -512,14 +647,38 @@ def source(object, output=sys.stdout):
     """
     Print or write to a file the source code for a Numpy object.
 
+    The source code is only returned for objects written in Python. Many
+    functions and classes are defined in C and will therefore not return
+    useful information.
+
     Parameters
     ----------
     object : numpy object
-        Input object.
+        Input object. This can be any object (function, class, module, ...).
     output : file object, optional
         If `output` not supplied then source code is printed to screen
         (sys.stdout).  File object must be created with either write 'w' or
         append 'a' modes.
+
+    See Also
+    --------
+    lookfor, info
+
+    Examples
+    --------
+    >>> np.source(np.interp)
+    In file: /usr/lib/python2.6/dist-packages/numpy/lib/function_base.py
+    def interp(x, xp, fp, left=None, right=None):
+        \"\"\".... (full docstring printed)\"\"\"
+        if isinstance(x, (float, int, number)):
+            return compiled_interp([x], xp, fp, left, right).item()
+        else:
+            return compiled_interp(x, xp, fp, left, right)
+
+    The source code is only returned for objects written in Python.
+
+    >>> np.source(np.array)
+    Not available for this object.
 
     """
     # Local import to speed up numpy's import time.
@@ -539,33 +698,48 @@ _lookfor_caches = {}
 # regexp whose match indicates that the string may contain a function signature
 _function_signature_re = re.compile(r"[a-z_]+\(.*[,=].*\)", re.I)
 
-def lookfor(what, module=None, import_modules=True, regenerate=False):
+def lookfor(what, module=None, import_modules=True, regenerate=False,
+            output=None):
     """
     Do a keyword search on docstrings.
 
     A list of of objects that matched the search is displayed,
-    sorted by relevance.
+    sorted by relevance. All given keywords need to be found in the
+    docstring for it to be returned as a result, but the order does
+    not matter.
 
     Parameters
     ----------
     what : str
         String containing words to look for.
-    module : str, module
-        Module whose docstrings to go through.
-    import_modules : bool
-        Whether to import sub-modules in packages.
-        Will import only modules in ``__all__``.
-    regenerate : bool
-        Whether to re-generate the docstring cache.
+    module : str or list, optional
+        Name of module(s) whose docstrings to go through.
+    import_modules : bool, optional
+        Whether to import sub-modules in packages. Default is True.
+    regenerate : bool, optional
+        Whether to re-generate the docstring cache. Default is False.
+    output : file-like, optional
+        File-like object to write the output to. If omitted, use a pager.
+
+    See Also
+    --------
+    source, info
+
+    Notes
+    -----
+    Relevance is determined only roughly, by checking if the keywords occur
+    in the function name, at the start of a docstring, etc.
 
     Examples
     --------
-
     >>> np.lookfor('binary representation')
     Search results for 'binary representation'
     ------------------------------------------
     numpy.binary_repr
         Return the binary representation of the input number as a string.
+    numpy.base_repr
+        Return a string representation of a number in the given base system.
+    ...
 
     """
     import pydoc
@@ -639,8 +813,13 @@ def lookfor(what, module=None, import_modules=True, regenerate=False):
             first_doc = ""
         help_text.append("%s\n    %s" % (name, first_doc))
 
+    if not found:
+        help_text.append("Nothing found.")
+
     # Output
-    if len(help_text) > 10:
+    if output is not None:
+        output.write("\n".join(help_text))
+    elif len(help_text) > 10:
         pager = pydoc.getpager()
         pager("\n".join(help_text))
     else:
@@ -656,7 +835,6 @@ def _lookfor_generate_cache(module, import_modules, regenerate):
         Module for which to generate docstring cache
     import_modules : bool
         Whether to import sub-modules in packages.
-        Will import only modules in __all__
     regenerate: bool
         Re-generate the docstring cache
 
@@ -670,12 +848,23 @@ def _lookfor_generate_cache(module, import_modules, regenerate):
     global _lookfor_caches
     # Local import to speed up numpy's import time.
     import inspect
+    from StringIO import StringIO
 
     if module is None:
         module = "numpy"
 
     if isinstance(module, str):
-        module = __import__(module)
+        try:
+            __import__(module)
+        except ImportError:
+            return {}
+        module = sys.modules[module]
+    elif isinstance(module, list) or isinstance(module, tuple):
+        cache = {}
+        for mod in module:
+            cache.update(_lookfor_generate_cache(mod, import_modules,
+                                                 regenerate))
+        return cache
 
     if id(module) in _lookfor_caches and not regenerate:
         return _lookfor_caches[id(module)]
@@ -705,23 +894,52 @@ def _lookfor_generate_cache(module, import_modules, regenerate):
             if import_modules and hasattr(item, '__path__'):
                 for pth in item.__path__:
                     for mod_path in os.listdir(pth):
+                        this_py = os.path.join(pth, mod_path)
                         init_py = os.path.join(pth, mod_path, '__init__.py')
-                        if not os.path.isfile(init_py):
+                        if os.path.isfile(this_py) and mod_path.endswith('.py'):
+                            to_import = mod_path[:-3]
+                        elif os.path.isfile(init_py):
+                            to_import = mod_path
+                        else:
                             continue
-                        if _all is not None and mod_path not in _all:
-                            continue
-                        try:
-                            __import__("%s.%s" % (name, mod_path))
-                        except ImportError:
+                        if to_import == '__init__':
                             continue
 
-            for n, v in inspect.getmembers(item):
-                if _all is not None and n not in _all:
+                        try:
+                            # Catch SystemExit, too
+                            base_exc = BaseException
+                        except NameError:
+                            # Python 2.4 doesn't have BaseException
+                            base_exc = Exception
+
+                        try:
+                            old_stdout = sys.stdout
+                            old_stderr = sys.stderr
+                            try:
+                                sys.stdout = StringIO()
+                                sys.stderr = StringIO()
+                                __import__("%s.%s" % (name, to_import))
+                            finally:
+                                sys.stdout = old_stdout
+                                sys.stderr = old_stderr
+                        except base_exc:
+                            continue
+
+            for n, v in _getmembers(item):
+                item_name = getattr(v, '__name__', "%s.%s" % (name, n))
+                mod_name = getattr(v, '__module__', None)
+                if '.' not in item_name and mod_name:
+                    item_name = "%s.%s" % (mod_name, item_name)
+
+                if not item_name.startswith(name + '.'):
+                    # don't crawl foreign objects
+                    continue
+                elif not (inspect.ismodule(v) or _all is None or n in _all):
                     continue
                 stack.append(("%s.%s" % (name, n), v))
         elif inspect.isclass(item):
             kind = "class"
-            for n, v in inspect.getmembers(item):
+            for n, v in _getmembers(item):
                 stack.append(("%s.%s" % (name, n), v))
         elif callable(item):
             kind = "func"
@@ -731,6 +949,15 @@ def _lookfor_generate_cache(module, import_modules, regenerate):
             cache[name] = (doc, kind, index)
 
     return cache
+
+def _getmembers(item):
+    import inspect
+    try:
+        members = inspect.getmembers(item)
+    except AttributeError:
+        members = [(x, getattr(item, x)) for x in dir(item)
+                   if hasattr(item, x)]
+    return members
 
 #-----------------------------------------------------------------------------
 
@@ -748,6 +975,19 @@ def _lookfor_generate_cache(module, import_modules, regenerate):
 #   * raise SyntaxError instead of a custom exception.
 
 class SafeEval(object):
+    """
+    Object to evaluate constant string expressions.
+
+    This includes strings with lists, dicts and tuples using the abstract
+    syntax tree created by ``compiler.parse``.
+
+    For an example of usage, see `safe_eval`.
+
+    See Also
+    --------
+    safe_eval
+
+    """
 
     def visit(self, node, **kw):
         cls = node.__class__
@@ -799,10 +1039,12 @@ def safe_eval(source):
     Parameters
     ----------
     source : str
+        The string to evaluate.
 
     Returns
     -------
     obj : object
+       The result of evaluating `source`.
 
     Raises
     ------
@@ -812,25 +1054,22 @@ def safe_eval(source):
 
     Examples
     --------
-    >>> from numpy.lib.utils import safe_eval
-    >>> safe_eval('1')
+    >>> np.safe_eval('1')
     1
-    >>> safe_eval('[1, 2, 3]')
+    >>> np.safe_eval('[1, 2, 3]')
     [1, 2, 3]
-    >>> safe_eval('{"foo": ("bar", 10.0)}')
+    >>> np.safe_eval('{"foo": ("bar", 10.0)}')
     {'foo': ('bar', 10.0)}
-    >>> safe_eval('import os')
+
+    >>> np.safe_eval('import os')
     Traceback (most recent call last):
       ...
     SyntaxError: invalid syntax
+
     >>> safe_eval('open("/home/user/.ssh/id_dsa").read()')
     Traceback (most recent call last):
       ...
     SyntaxError: Unsupported source construct: compiler.ast.CallFunc
-    >>> safe_eval('dict')
-    Traceback (most recent call last):
-      ...
-    SyntaxError: Unknown name: dict
 
     """
     # Local import to speed up numpy's import time.

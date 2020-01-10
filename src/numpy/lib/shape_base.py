@@ -1,5 +1,4 @@
-__all__ = ['atleast_1d','atleast_2d','atleast_3d','vstack','hstack',
-           'column_stack','row_stack', 'dstack','array_split','split','hsplit',
+__all__ = ['column_stack','row_stack', 'dstack','array_split','split','hsplit',
            'vsplit','dsplit','apply_over_axes','expand_dims',
            'apply_along_axis', 'kron', 'tile', 'get_array_wrap']
 
@@ -7,6 +6,7 @@ import numpy.core.numeric as _nx
 from numpy.core.numeric import asarray, zeros, newaxis, outer, \
      concatenate, isscalar, array, asanyarray
 from numpy.core.fromnumeric import product, reshape
+from numpy.core import hstack, vstack, atleast_3d
 
 def apply_along_axis(func1d,axis,arr,*args):
     """
@@ -248,261 +248,6 @@ def expand_dims(a, axis):
     if axis < 0:
         axis = axis + len(shape) + 1
     return a.reshape(shape[:axis] + (1,) + shape[axis:])
-
-
-def atleast_1d(*arys):
-    """
-    Convert inputs to arrays with at least one dimension.
-
-    Scalar inputs are converted to 1-dimensional arrays, whilst
-    higher-dimensional inputs are preserved.
-
-    Parameters
-    ----------
-    array1, array2, ... : array_like
-        One or more input arrays.
-
-    Returns
-    -------
-    ret : ndarray
-        An array, or sequence of arrays, each with ``a.ndim >= 1``.
-        Copies are made only if necessary.
-
-    See Also
-    --------
-    atleast_2d, atleast_3d
-
-    Examples
-    --------
-    >>> np.atleast_1d(1.0)
-    array([ 1.])
-
-    >>> x = np.arange(9.0).reshape(3,3)
-    >>> np.atleast_1d(x)
-    array([[ 0.,  1.,  2.],
-           [ 3.,  4.,  5.],
-           [ 6.,  7.,  8.]])
-    >>> np.atleast_1d(x) is x
-    True
-
-    >>> np.atleast_1d(1, [3, 4])
-    [array([1]), array([3, 4])]
-
-    """
-    res = []
-    for ary in arys:
-        res.append(array(ary,copy=False,subok=True,ndmin=1))
-    if len(res) == 1:
-        return res[0]
-    else:
-        return res
-
-def atleast_2d(*arys):
-    """
-    View inputs as arrays with at least two dimensions.
-
-    Parameters
-    ----------
-    array1, array2, ... : array_like
-        One or more array-like sequences.  Non-array inputs are converted
-        to arrays.  Arrays that already have two or more dimensions are
-        preserved.
-
-    Returns
-    -------
-    res, res2, ... : ndarray
-        An array, or tuple of arrays, each with ``a.ndim >= 2``.
-        Copies are avoided where possible, and views with two or more
-        dimensions are returned.
-
-    See Also
-    --------
-    atleast_1d, atleast_3d
-
-    Examples
-    --------
-    >>> np.atleast_2d(3.0)
-    array([[ 3.]])
-
-    >>> x = np.arange(3.0)
-    >>> np.atleast_2d(x)
-    array([[ 0.,  1.,  2.]])
-    >>> np.atleast_2d(x).base is x
-    True
-
-    >>> np.atleast_2d(1, [1, 2], [[1, 2]])
-    [array([[1]]), array([[1, 2]]), array([[1, 2]])]
-
-    """
-    res = []
-    for ary in arys:
-        res.append(array(ary,copy=False,subok=True,ndmin=2))
-    if len(res) == 1:
-        return res[0]
-    else:
-        return res
-
-def atleast_3d(*arys):
-    """
-    View inputs as arrays with at least three dimensions.
-
-    Parameters
-    ----------
-    array1, array2, ... : array_like
-        One or more array-like sequences.  Non-array inputs are converted
-        to arrays. Arrays that already have three or more dimensions are
-        preserved.
-
-    Returns
-    -------
-    res1, res2, ... : ndarray
-        An array, or tuple of arrays, each with ``a.ndim >= 3``.
-        Copies are avoided where possible, and views with three or more
-        dimensions are returned.  For example, a 1-D array of shape ``N``
-        becomes a view of shape ``(1, N, 1)``.  A 2-D array of shape ``(M, N)``
-        becomes a view of shape ``(M, N, 1)``.
-
-    See Also
-    --------
-    atleast_1d, atleast_2d
-
-    Examples
-    --------
-    >>> np.atleast_3d(3.0)
-    array([[[ 3.]]])
-
-    >>> x = np.arange(3.0)
-    >>> np.atleast_3d(x).shape
-    (1, 3, 1)
-
-    >>> x = np.arange(12.0).reshape(4,3)
-    >>> np.atleast_3d(x).shape
-    (4, 3, 1)
-    >>> np.atleast_3d(x).base is x
-    True
-
-    >>> for arr in np.atleast_3d([1, 2], [[1, 2]], [[[1, 2]]]):
-    ...     print arr, arr.shape
-    ...
-    [[[1]
-      [2]]] (1, 2, 1)
-    [[[1]
-      [2]]] (1, 2, 1)
-    [[[1 2]]] (1, 1, 2)
-
-    """
-    res = []
-    for ary in arys:
-        ary = asarray(ary)
-        if len(ary.shape) == 0:
-            result = ary.reshape(1,1,1)
-        elif len(ary.shape) == 1:
-            result = ary[newaxis,:,newaxis]
-        elif len(ary.shape) == 2:
-            result = ary[:,:,newaxis]
-        else:
-            result = ary
-        res.append(result)
-    if len(res) == 1:
-        return res[0]
-    else:
-        return res
-
-
-def vstack(tup):
-    """
-    Stack arrays in sequence vertically (row wise).
-
-    Take a sequence of arrays and stack them vertically to make a single
-    array. Rebuild arrays divided by `vsplit`.
-
-    Parameters
-    ----------
-    tup : sequence of ndarrays
-        Tuple containing arrays to be stacked. The arrays must have the same
-        shape along all but the first axis.
-
-    Returns
-    -------
-    stacked : ndarray
-        The array formed by stacking the given arrays.
-
-    See Also
-    --------
-    hstack : Stack arrays in sequence horizontally (column wise).
-    dstack : Stack arrays in sequence depth wise (along third dimension).
-    concatenate : Join a sequence of arrays together.
-    vsplit : Split array into a list of multiple sub-arrays vertically.
-
-
-    Notes
-    -----
-    Equivalent to ``np.concatenate(tup, axis=0)``
-
-    Examples
-    --------
-    >>> a = np.array([1, 2, 3])
-    >>> b = np.array([2, 3, 4])
-    >>> np.vstack((a,b))
-    array([[1, 2, 3],
-           [2, 3, 4]])
-
-    >>> a = np.array([[1], [2], [3]])
-    >>> b = np.array([[2], [3], [4]])
-    >>> np.vstack((a,b))
-    array([[1],
-           [2],
-           [3],
-           [2],
-           [3],
-           [4]])
-
-    """
-    return _nx.concatenate(map(atleast_2d,tup),0)
-
-def hstack(tup):
-    """
-    Stack arrays in sequence horizontally (column wise).
-
-    Take a sequence of arrays and stack them horizontally to make
-    a single array. Rebuild arrays divided by ``hsplit``.
-
-    Parameters
-    ----------
-    tup : sequence of ndarrays
-        All arrays must have the same shape along all but the second axis.
-
-    Returns
-    -------
-    stacked : ndarray
-        The array formed by stacking the given arrays.
-
-    See Also
-    --------
-    vstack : Stack arrays in sequence vertically (row wise).
-    dstack : Stack arrays in sequence depth wise (along third axis).
-    concatenate : Join a sequence of arrays together.
-    hsplit : Split array along second axis.
-
-    Notes
-    -----
-    Equivalent to ``np.concatenate(tup, axis=1)``
-
-    Examples
-    --------
-    >>> a = np.array((1,2,3))
-    >>> b = np.array((2,3,4))
-    >>> np.hstack((a,b))
-    array([1, 2, 3, 2, 3, 4])
-    >>> a = np.array([[1],[2],[3]])
-    >>> b = np.array([[2],[3],[4]])
-    >>> np.hstack((a,b))
-    array([[1, 2],
-           [2, 3],
-           [3, 4]])
-
-    """
-    return _nx.concatenate(map(atleast_1d,tup),1)
 
 row_stack = vstack
 
@@ -892,6 +637,19 @@ def dsplit(ary,indices_or_sections):
         raise ValueError, 'vsplit only works on arrays of 3 or more dimensions'
     return split(ary,indices_or_sections,2)
 
+def get_array_prepare(*args):
+    """Find the wrapper for the array with the highest priority.
+
+    In case of ties, leftmost wins. If no wrapper is found, return None
+    """
+    wrappers = [(getattr(x, '__array_priority__', 0), -i,
+                 x.__array_prepare__) for i, x in enumerate(args)
+                                   if hasattr(x, '__array_prepare__')]
+    wrappers.sort()
+    if wrappers:
+        return wrappers[-1][-1]
+    return None
+
 def get_array_wrap(*args):
     """Find the wrapper for the array with the highest priority.
 
@@ -975,7 +733,6 @@ def kron(a,b):
     True
 
     """
-    wrapper = get_array_wrap(a, b)
     b = asanyarray(b)
     a = array(a,copy=False,subok=True,ndmin=b.ndim)
     ndb, nda = b.ndim, a.ndim
@@ -998,6 +755,10 @@ def kron(a,b):
     axis = nd-1
     for _ in xrange(nd):
         result = concatenate(result, axis=axis)
+    wrapper = get_array_prepare(a, b)
+    if wrapper is not None:
+        result = wrapper(result)
+    wrapper = get_array_wrap(a, b)
     if wrapper is not None:
         result = wrapper(result)
     return result
@@ -1006,6 +767,19 @@ def kron(a,b):
 def tile(A, reps):
     """
     Construct an array by repeating A the number of times given by reps.
+
+    If `reps` has length ``d``, the result will have dimension of
+    ``max(d, A.ndim)``.
+
+    If ``A.ndim < d``, `A` is promoted to be d-dimensional by prepending new
+    axes. So a shape (3,) array is promoted to (1, 3) for 2-D replication,
+    or shape (1, 1, 3) for 3-D replication. If this is not the desired
+    behavior, promote `A` to d-dimensions manually before calling this
+    function.
+
+    If ``A.ndim > d``, `reps` is promoted to `A`.ndim by pre-pending 1's to it.
+    Thus for an `A` of shape (2, 3, 4, 5), a `reps` of (2, 2) is treated as
+    (1, 1, 2, 2).
 
     Parameters
     ----------
@@ -1017,24 +791,11 @@ def tile(A, reps):
     Returns
     -------
     c : ndarray
-        The output array.
+        The tiled output array.
 
     See Also
     --------
-    repeat
-
-    Notes
-    -----
-    If `reps` has length d, the result will have dimension of max(d, `A`.ndim).
-
-    If `A`.ndim < d, `A` is promoted to be d-dimensional by prepending new
-    axes. So a shape (3,) array is promoted to (1,3) for 2-D replication,
-    or shape (1,1,3) for 3-D replication. If this is not the desired behavior,
-    promote `A` to d-dimensions manually before calling this function.
-
-    If `A`.ndim > d, `reps` is promoted to `A`.ndim by pre-pending 1's to it.
-    Thus for an `A` of shape (2,3,4,5), a `reps` of (2,2) is treated as
-    (1,1,2,2).
+    repeat : Repeat elements of an array.
 
     Examples
     --------
@@ -1046,7 +807,6 @@ def tile(A, reps):
            [0, 1, 2, 0, 1, 2]])
     >>> np.tile(a, (2, 1, 2))
     array([[[0, 1, 2, 0, 1, 2]],
-    <BLANKLINE>
            [[0, 1, 2, 0, 1, 2]]])
 
     >>> b = np.array([[1, 2], [3, 4]])

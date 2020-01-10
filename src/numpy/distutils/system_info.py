@@ -516,8 +516,13 @@ class system_info:
         dirs.extend(default_dirs)
         ret = []
         for d in dirs:
-            if os.path.isdir(d) and d not in ret:
+            if not os.path.isdir(d):
+                warnings.warn('Specified path %s is invalid.' % d)
+                continue
+
+            if d not in ret:
                 ret.append(d)
+
         log.debug('( %s = %s )', key, ':'.join(ret))
         return ret
 
@@ -1168,6 +1173,10 @@ class lapack_src_info(system_info):
         # Lapack 3.1:
         src_dir2 = os.path.join(src_dir,'..','INSTALL')
         sources += [os.path.join(src_dir2,p+'lamch.f') for p in 'sdcz']
+        # Lapack 3.2.1:
+        sources += [os.path.join(src_dir,p+'larfp.f') for p in 'sdcz']
+        sources += [os.path.join(src_dir,'ila'+p+'lr.f') for p in 'sdcz']
+        sources += [os.path.join(src_dir,'ila'+p+'lc.f') for p in 'sdcz']
         # Should we check here actual existence of source files?
         # Yes, the file listing is different between 3.0 and 3.1
         # versions.

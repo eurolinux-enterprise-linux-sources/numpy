@@ -1,13 +1,10 @@
 import os
 import genapi
 
-types = ['Generic','Number','Integer','SignedInteger','UnsignedInteger',
-         'Inexact',
-         'Floating', 'ComplexFloating', 'Flexible', 'Character',
-         'Byte','Short','Int', 'Long', 'LongLong', 'UByte', 'UShort',
-         'UInt', 'ULong', 'ULongLong', 'Float', 'Double', 'LongDouble',
-         'CFloat', 'CDouble', 'CLongDouble', 'Object', 'String', 'Unicode',
-         'Void']
+from genapi import \
+        TypeApi, GlobalVarApi, FunctionApi, BoolValuesApi
+
+import numpy_api
 
 h_template = r"""
 #ifdef _MULTIARRAYMODULE
@@ -17,18 +14,15 @@ typedef struct {
         npy_bool obval;
 } PyBoolScalarObject;
 
-
-static unsigned int PyArray_GetNDArrayCVersion (void);
-static PyTypeObject PyBigArray_Type;
-static PyTypeObject PyArray_Type;
-static PyTypeObject PyArrayDescr_Type;
-static PyTypeObject PyArrayFlags_Type;
-static PyTypeObject PyArrayIter_Type;
-static PyTypeObject PyArrayMapIter_Type;
-static PyTypeObject PyArrayMultiIter_Type;
-static int NPY_NUMUSERTYPES=0;
-static PyTypeObject PyBoolArrType_Type;
-static PyBoolScalarObject _PyArrayScalar_BoolValues[2];
+#ifdef NPY_ENABLE_SEPARATE_COMPILATION
+extern NPY_NO_EXPORT PyTypeObject PyArrayMapIter_Type;
+extern NPY_NO_EXPORT PyTypeObject PyArrayNeighborhoodIter_Type;
+extern NPY_NO_EXPORT PyBoolScalarObject _PyArrayScalar_BoolValues[2];
+#else
+NPY_NO_EXPORT PyTypeObject PyArrayMapIter_Type;
+NPY_NO_EXPORT PyTypeObject PyArrayNeighborhoodIter_Type;
+NPY_NO_EXPORT PyBoolScalarObject _PyArrayScalar_BoolValues[2];
+#endif
 
 %s
 
@@ -47,17 +41,6 @@ void **PyArray_API;
 static void **PyArray_API=NULL;
 #endif
 #endif
-
-#define PyArray_GetNDArrayCVersion (*(unsigned int (*)(void)) PyArray_API[0])
-#define PyBigArray_Type (*(PyTypeObject *)PyArray_API[1])
-#define PyArray_Type (*(PyTypeObject *)PyArray_API[2])
-#define PyArrayDescr_Type (*(PyTypeObject *)PyArray_API[3])
-#define PyArrayFlags_Type (*(PyTypeObject *)PyArray_API[4])
-#define PyArrayIter_Type (*(PyTypeObject *)PyArray_API[5])
-#define PyArrayMultiIter_Type (*(PyTypeObject *)PyArray_API[6])
-#define NPY_NUMUSERTYPES (*(int *)PyArray_API[7])
-#define PyBoolArrType_Type (*(PyTypeObject *)PyArray_API[8])
-#define _PyArrayScalar_BoolValues ((PyBoolScalarObject *)PyArray_API[9])
 
 %s
 
@@ -80,8 +63,14 @@ _import_array(void)
   /* Perform runtime check of C API version */
   if (NPY_VERSION != PyArray_GetNDArrayCVersion()) {
     PyErr_Format(PyExc_RuntimeError, "module compiled against "\
-        "version %%x of C-API but this version of numpy is %%x", \
+        "ABI version %%x but this version of numpy is %%x", \
         (int) NPY_VERSION, (int) PyArray_GetNDArrayCVersion());
+    return -1;
+  }
+  if (NPY_FEATURE_VERSION > PyArray_GetNDArrayCFeatureVersion()) {
+    PyErr_Format(PyExc_RuntimeError, "module compiled against "\
+        "API version %%x but this version of numpy is %%x", \
+        (int) NPY_FEATURE_VERSION, (int) PyArray_GetNDArrayCFeatureVersion());
     return -1;
   }
  
@@ -94,15 +83,15 @@ _import_array(void)
     PyErr_Format(PyExc_RuntimeError, "FATAL: module compiled as unknown endian");
     return -1;
   }
-#ifdef NPY_BIG_ENDIAN
+#if NPY_BYTE_ORDER ==NPY_BIG_ENDIAN
   if (st != NPY_CPU_BIG) {
     PyErr_Format(PyExc_RuntimeError, "FATAL: module compiled as "\
         "big endian, but detected different endianness at runtime");
     return -1;
   }
-#elif defined(NPY_LITTLE_ENDIAN)
+#elif NPY_BYTE_ORDER == NPY_LITTLE_ENDIAN
   if (st != NPY_CPU_LITTLE) {
-    PyErr_Format(PyExc_RuntimeError, "FATAL: module compiled as"\
+    PyErr_Format(PyExc_RuntimeError, "FATAL: module compiled as "\
         "little endian, but detected different endianness at runtime");
     return -1;
   }
@@ -129,16 +118,6 @@ c_template = r"""
 */
 
 void *PyArray_API[] = {
-        (void *) PyArray_GetNDArrayCVersion,
-        (void *) &PyBigArray_Type,
-        (void *) &PyArray_Type,
-        (void *) &PyArrayDescr_Type,
-        (void *) &PyArrayFlags_Type,
-        (void *) &PyArrayIter_Type,
-        (void *) &PyArrayMultiIter_Type,
-        (int *) &NPY_NUMUSERTYPES,
-        (void *) &PyBoolArrType_Type,
-        (void *) &_PyArrayScalar_BoolValues,
 %s
 };
 """
@@ -156,9 +135,10 @@ def generate_api(output_dir, force=False):
     c_file = os.path.join(output_dir, '__%s.c' % basename)
     d_file = os.path.join(output_dir, '%s.txt' % basename)
     targets = (h_file, c_file, d_file)
-    sources = ['numpy_api_order.txt']
 
-    if (not force and not genapi.should_rebuild(targets, sources + [__file__])):
+    sources = numpy_api.multiarray_api
+
+    if (not force and not genapi.should_rebuild(targets, [numpy_api.__file__, __file__])):
         return targets
     else:
         do_generate_api(targets, sources)
@@ -170,30 +150,54 @@ def do_generate_api(targets, sources):
     c_file = targets[1]
     doc_file = targets[2]
 
-    numpyapi_list = genapi.get_api_functions('NUMPY_API', sources[0])
+    global_vars = sources[0]
+    global_vars_types = sources[1]
+    scalar_bool_values = sources[2]
+    types_api = sources[3]
+    multiarray_funcs = sources[4]
 
-    # API fixes for __arrayobject_api.h
-    fixed = 10
-    numtypes = len(types) + fixed
+    # Remove global_vars_type: not a api dict
+    multiarray_api = sources[:1] + sources[2:]
 
     module_list = []
     extension_list = []
     init_list = []
 
-    # setup types
-    for k, atype in enumerate(types):
-        num = fixed + k
-        astr = "        (void *) &Py%sArrType_Type," % types[k]
-        init_list.append(astr)
-        astr = "static PyTypeObject Py%sArrType_Type;" % types[k]
-        module_list.append(astr)
-        astr = "#define Py%sArrType_Type (*(PyTypeObject *)PyArray_API[%d])" % \
-               (types[k], num)
-        extension_list.append(astr)
+    # Check multiarray api indexes
+    multiarray_api_index = genapi.merge_api_dicts(multiarray_api)
+    genapi.check_api_dict(multiarray_api_index)
 
-    # set up object API
-    genapi.add_api_list(numtypes, 'PyArray_API', numpyapi_list,
-                        module_list, extension_list, init_list)
+    numpyapi_list = genapi.get_api_functions('NUMPY_API',
+                                              multiarray_funcs)
+    ordered_funcs_api = genapi.order_dict(multiarray_funcs)
+
+    # Create dict name -> *Api instance
+    api_name = 'PyArray_API'
+    multiarray_api_dict = {}
+    for f in numpyapi_list:
+        name = f.name
+        index = multiarray_funcs[name]
+        multiarray_api_dict[f.name] = FunctionApi(f.name, index, f.return_type,
+                                                  f.args, api_name)
+
+    for name, index in global_vars.items():
+        type = global_vars_types[name]
+        multiarray_api_dict[name] = GlobalVarApi(name, index, type, api_name)
+
+    for name, index in scalar_bool_values.items():
+        multiarray_api_dict[name] = BoolValuesApi(name, index, api_name)
+
+    for name, index in types_api.items():
+        multiarray_api_dict[name] = TypeApi(name, index, 'PyTypeObject', api_name)
+
+    assert len(multiarray_api_dict) == len(multiarray_api_index)
+
+    extension_list = []
+    for name, index in genapi.order_dict(multiarray_api_index):
+        api_item = multiarray_api_dict[name]
+        extension_list.append(api_item.define_from_array_api_string())
+        init_list.append(api_item.array_api_define())
+        module_list.append(api_item.internal_define())
 
     # Write to header
     fid = open(header_file, 'w')
@@ -203,7 +207,7 @@ def do_generate_api(targets, sources):
 
     # Write to c-code
     fid = open(c_file, 'w')
-    s = c_template % '\n'.join(init_list)
+    s = c_template % ',\n'.join(init_list)
     fid.write(s)
     fid.close()
 

@@ -1,4 +1,7 @@
 import sys
+from decimal import Decimal
+
+import numpy as np
 from numpy.core import *
 from numpy.random import rand, randint, randn
 from numpy.testing import *
@@ -81,10 +84,6 @@ class TestDot(TestCase):
         c1 = dot(b3, b1)
         c2 = dot_(b3, b1)
         assert_almost_equal(c1, c2, decimal=self.N)
-
-    def test_matscalar(self):
-        b1 = matrix(ones((3,3),dtype=complex))
-        assert_equal(b1*1.0, b1)
 
     def test_columnvect1(self):
         b1 = ones((3,1))
@@ -884,6 +883,76 @@ class TestLikeFuncs(TestCase):
             assert dz.shape == dshape
             assert dz.dtype.type == dtype
 
+class _TestCorrelate(TestCase):
+    def _setup(self, dt):
+        self.x = np.array([1, 2, 3, 4, 5], dtype=dt)
+        self.y = np.array([-1, -2, -3], dtype=dt)
+        self.z1 = np.array([ -3.,  -8., -14., -20., -26., -14.,  -5.], dtype=dt)
+        self.z2 = np.array([ -5.,  -14., -26., -20., -14., -8.,  -3.], dtype=dt)
+
+    def test_float(self):
+        self._setup(np.float)
+        z = np.correlate(self.x, self.y, 'full', old_behavior=self.old_behavior)
+        assert_array_almost_equal(z, self.z1)
+        z = np.correlate(self.y, self.x, 'full', old_behavior=self.old_behavior)
+        assert_array_almost_equal(z, self.z2)
+
+    def test_object(self):
+        self._setup(Decimal)
+        z = np.correlate(self.x, self.y, 'full', old_behavior=self.old_behavior)
+        assert_array_almost_equal(z, self.z1)
+        z = np.correlate(self.y, self.x, 'full', old_behavior=self.old_behavior)
+        assert_array_almost_equal(z, self.z2)
+
+class TestCorrelate(_TestCorrelate):
+    old_behavior = True
+    def _setup(self, dt):
+        # correlate uses an unconventional definition so that correlate(a, b)
+        # == correlate(b, a), so force the corresponding outputs to be the same
+        # as well
+        _TestCorrelate._setup(self, dt)
+        self.z2 = self.z1
+
+    @dec.deprecated()
+    def test_complex(self):
+        x = np.array([1, 2, 3, 4+1j], dtype=np.complex)
+        y = np.array([-1, -2j, 3+1j], dtype=np.complex)
+        r_z = np.array([3+1j, 6, 8-1j, 9+1j, -1-8j, -4-1j], dtype=np.complex)
+        z = np.correlate(x, y, 'full')
+        assert_array_almost_equal(z, r_z)
+
+    @dec.deprecated()
+    def test_float(self):
+        _TestCorrelate.test_float(self)
+
+    @dec.deprecated()
+    def test_object(self):
+        _TestCorrelate.test_object(self)
+
+class TestCorrelateNew(_TestCorrelate):
+    old_behavior = False
+    def test_complex(self):
+        x = np.array([1, 2, 3, 4+1j], dtype=np.complex)
+        y = np.array([-1, -2j, 3+1j], dtype=np.complex)
+        r_z = np.array([3-1j, 6, 8+1j, 11+5j, -5+8j, -4-1j], dtype=np.complex)
+        #z = np.acorrelate(x, y, 'full')
+        #assert_array_almost_equal(z, r_z)
+
+        r_z = r_z[::-1].conjugate()
+        z = np.correlate(y, x, 'full', old_behavior=self.old_behavior)
+        assert_array_almost_equal(z, r_z)
+
+class TestArgwhere:
+    def test_2D(self):
+        x = np.arange(6).reshape((2, 3))
+        assert_array_equal(np.argwhere(x > 1),
+                           [[0, 2],
+                            [1, 0],
+                            [1, 1],
+                            [1, 2]])
+
+    def test_list(self):
+        assert_equal(np.argwhere([4, 0, 2, 1, 3]), [[0], [2], [3], [4]])
 
 if __name__ == "__main__":
     run_module_suite()

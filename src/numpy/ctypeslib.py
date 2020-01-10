@@ -63,16 +63,27 @@ except ImportError:
 
 if ctypes is None:
     def _dummy(*args, **kwds):
+        """
+        Dummy object that raises an ImportError if ctypes is not available.
+
+        Raises
+        ------
+        ImportError
+            If ctypes is not available.
+
+        """
         raise ImportError, "ctypes is not available."
     ctypes_load_library = _dummy
     load_library = _dummy
     as_ctypes = _dummy
     as_array = _dummy
     from numpy import intp as c_intp
+    _ndptr_base = object
 else:
     import numpy.core._internal as nic
     c_intp = nic._getintp_ctype()
     del nic
+    _ndptr_base = ctypes.c_void_p
 
     # Adapted from Albert Strasheim
     def load_library(libname, loader_path):
@@ -130,7 +141,26 @@ def _flags_fromnum(num):
     return res
 
 
-class _ndptr(object):
+class _ndptr(_ndptr_base):
+
+    def _check_retval_(self):
+        """This method is called when this class is used as the .restype
+        asttribute for a shared-library function.   It constructs a numpy
+        array from a void pointer."""
+        return array(self)
+
+    @property
+    def __array_interface__(self):
+        return {'descr': self._dtype_.descr,
+                '__ref': self,
+                'strides': None,
+                'shape': self._shape_,
+                'version': 3,
+                'typestr': self._dtype_.descr[0][1],
+                'data': (self.value, False),
+                }
+    
+    @classmethod
     def from_param(cls, obj):
         if not isinstance(obj, ndarray):
             raise TypeError, "argument must be an ndarray"
@@ -148,7 +178,6 @@ class _ndptr(object):
             raise TypeError, "array must have flags %s" % \
                   _flags_fromnum(cls._flags_)
         return obj.ctypes
-    from_param = classmethod(from_param)
 
 
 # Factory for an array-checking class with from_param defined for
@@ -174,7 +203,7 @@ def ndpointer(dtype=None, ndim=None, shape=None, flags=None):
         Number of array dimensions.
     shape : tuple of ints, optional
         Array shape.
-    flags : string or tuple of strings
+    flags : str or tuple of str
         Array flags; may be one or more of:
 
           - C_CONTIGUOUS / C / CONTIGUOUS
@@ -184,9 +213,20 @@ def ndpointer(dtype=None, ndim=None, shape=None, flags=None):
           - ALIGNED / A
           - UPDATEIFCOPY / U
 
+    Returns
+    -------
+    klass : ndpointer type object
+        A type object, which is an ``_ndtpr`` instance containing
+        dtype, ndim, shape and flags information.
+
+    Raises
+    ------
+    TypeError
+        If a given array does not satisfy the specified restrictions.
+
     Examples
     --------
-    >>> clib.somefunc.argtypes = [np.ctypeslib.ndpointer(dtype=float64,
+    >>> clib.somefunc.argtypes = [np.ctypeslib.ndpointer(dtype=np.float64,
     ...                                                  ndim=1,
     ...                                                  flags='C_CONTIGUOUS')]
     >>> clib.somefunc(np.array([1, 2, 3], dtype=np.float64))

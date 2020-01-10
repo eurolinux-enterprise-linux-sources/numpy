@@ -57,8 +57,21 @@ class build_ext (old_build_ext):
         self.run_command('build_src')
 
         if self.distribution.has_c_libraries():
-            self.run_command('build_clib')
-            build_clib = self.get_finalized_command('build_clib')
+            if self.inplace:
+                if self.distribution.have_run.get('build_clib'):
+                    log.warn('build_clib already run, it is too late to ' \
+                            'ensure in-place build of build_clib')
+                    build_clib = self.distribution.get_command_obj('build_clib')
+                else:
+                    build_clib = self.distribution.get_command_obj('build_clib')
+                    build_clib.inplace = 1
+                    build_clib.ensure_finalized()
+                    build_clib.run()
+                    self.distribution.have_run['build_clib'] = 1
+
+            else:
+                self.run_command('build_clib')
+                build_clib = self.get_finalized_command('build_clib')
             self.library_dirs.append(build_clib.build_clib)
         else:
             build_clib = None
@@ -409,10 +422,10 @@ class build_ext (old_build_ext):
                build_temp=self.build_temp,**kws)
 
     def _add_dummy_mingwex_sym(self, c_sources):
-	build_src = self.get_finalized_command("build_src").build_src
-	build_clib = self.get_finalized_command("build_clib").build_clib
-	objects = self.compiler.compile([os.path.join(build_src,
-		"gfortran_vs2003_hack.c")],
+        build_src = self.get_finalized_command("build_src").build_src
+        build_clib = self.get_finalized_command("build_clib").build_clib
+        objects = self.compiler.compile([os.path.join(build_src,
+                "gfortran_vs2003_hack.c")],
                 output_dir=self.build_temp)
         self.compiler.create_static_lib(objects, "_gfortran_workaround", output_dir=build_clib, debug=self.debug)
 

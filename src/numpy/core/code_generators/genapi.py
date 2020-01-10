@@ -6,19 +6,46 @@ See ``find_function`` for how functions should be formatted, and
 specified.
 """
 import sys, os, re
-import md5
+try:
+    import hashlib
+    md5new = hashlib.md5
+except ImportError:
+    import md5
+    md5new = md5.new
+if sys.version_info[:2] < (2, 6):
+    from sets import Set as set
+
 import textwrap
+
+from os.path import join
 
 __docformat__ = 'restructuredtext'
 
 # The files under src/ that are scanned for API functions
-API_FILES = ['arraymethods.c',
-             'arrayobject.c',
-             'arraytypes.inc.src',
-             'multiarraymodule.c',
-             'scalartypes.inc.src',
-             'umath_ufunc_object.inc',
-             'umath_loops.inc.src'
+API_FILES = [join('multiarray', 'methods.c'),
+             join('multiarray', 'arrayobject.c'),
+             join('multiarray', 'flagsobject.c'),
+             join('multiarray', 'descriptor.c'),
+             join('multiarray', 'iterators.c'),
+             join('multiarray', 'getset.c'),
+             join('multiarray', 'number.c'),
+             join('multiarray', 'sequence.c'),
+             join('multiarray', 'ctors.c'),
+             join('multiarray', 'convert.c'),
+             join('multiarray', 'shape.c'),
+             join('multiarray', 'item_selection.c'),
+             join('multiarray', 'convert_datatype.c'),
+             join('multiarray', 'arraytypes.c.src'),
+             join('multiarray', 'multiarraymodule.c'),
+             join('multiarray', 'scalartypes.c.src'),
+             join('multiarray', 'scalarapi.c'),
+             join('multiarray', 'calculation.c'),
+             join('multiarray', 'usertypes.c'),
+             join('multiarray', 'refcount.c'),
+             join('multiarray', 'conversion_utils.c'),
+             join('multiarray', 'buffer.c'),
+             join('umath', 'ufunc_object.c'),
+             join('umath', 'loops.c.src'),
             ]
 THIS_DIR = os.path.dirname(__file__)
 API_FILES = [os.path.join(THIS_DIR, '..', 'src', a) for a in API_FILES]
@@ -45,12 +72,6 @@ class Function(object):
         else:
             return typename + ' ' + name
 
-    def argtypes_string(self):
-        if not self.args:
-            return 'void'
-        argstr = ', '.join([_repl(a[0]) for a in self.args])
-        return argstr
-
     def __str__(self):
         argstr = ', '.join([self._format_arg(a) for a in self.args])
         if self.doc:
@@ -75,7 +96,7 @@ class Function(object):
         return '\n'.join(lines)
 
     def api_hash(self):
-        m = md5.new()
+        m = md5new()
         m.update(remove_whitespace(self.return_type))
         m.update('\000')
         m.update(self.name)
@@ -186,7 +207,7 @@ def find_functions(filename, tag='API'):
                     doclist.append(line)
             elif state == STATE_RETTYPE:
                 # first line of declaration with return type
-                m = re.match(r'static\s+(.*)$', line)
+                m = re.match(r'NPY_NO_EXPORT\s+(.*)$', line)
                 if m:
                     line = m.group(1)
                 return_type = line
@@ -222,54 +243,6 @@ def find_functions(filename, tag='API'):
     fo.close()
     return functions
 
-def read_order(order_file):
-    """
-    Read the order of the API functions from a file.
-
-    Comments can be put on lines starting with #
-    """
-    fo = open(order_file, 'r')
-    order = {}
-    i = 0
-    for line in fo:
-        line = line.strip()
-        if not line.startswith('#'):
-            order[line] = i
-            i += 1
-    fo.close()
-    return order
-
-def get_api_functions(tagname, order_file):
-    if not os.path.exists(order_file):
-        order_file = file_in_this_dir(order_file)
-    order = read_order(order_file)
-    functions = []
-    for f in API_FILES:
-        functions.extend(find_functions(f, tagname))
-    dfunctions = []
-    for func in functions:
-        o = order[func.name]
-        dfunctions.append( (o, func) )
-    dfunctions.sort()
-    return [a[1] for a in dfunctions]
-
-def add_api_list(offset, APIname, api_list,
-                 module_list, extension_list, init_list):
-    """Add the API function declarations to the appropiate lists for use in
-    the headers.
-    """
-    for k, func in enumerate(api_list):
-        num = offset + k
-        astr = "static %s %s \\\n       (%s);" % \
-               (func.return_type, func.name, func.argtypes_string())
-        module_list.append(astr)
-        astr = "#define %s \\\n        (*(%s (*)(%s)) \\\n"\
-               "         %s[%d])" % (func.name,func.return_type,
-                                     func.argtypes_string(), APIname, num)
-        extension_list.append(astr)
-        astr = "        (void *) %s," % func.name
-        init_list.append(astr)
-
 def should_rebuild(targets, source_files):
     from distutils.dep_util import newer_group
     for t in targets:
@@ -280,11 +253,216 @@ def should_rebuild(targets, source_files):
         return True
     return False
 
+# Those *Api classes instances know how to output strings for the generated code
+class TypeApi:
+    def __init__(self, name, index, ptr_cast, api_name):
+        self.index = index
+        self.name = name
+        self.ptr_cast = ptr_cast
+        self.api_name = api_name
+
+    def define_from_array_api_string(self):
+        return "#define %s (*(%s *)%s[%d])" % (self.name,
+                                               self.ptr_cast,
+                                               self.api_name,
+                                               self.index)
+
+    def array_api_define(self):
+        return "        (void *) &%s" % self.name
+
+    def internal_define(self):
+        astr = """\
+#ifdef NPY_ENABLE_SEPARATE_COMPILATION
+    extern NPY_NO_EXPORT PyTypeObject %(type)s;
+#else
+    NPY_NO_EXPORT PyTypeObject %(type)s;
+#endif
+""" % {'type': self.name}
+        return astr
+
+class GlobalVarApi:
+    def __init__(self, name, index, type, api_name):
+        self.name = name
+        self.index = index
+        self.type = type
+        self.api_name = api_name
+
+    def define_from_array_api_string(self):
+        return "#define %s (*(%s *)%s[%d])" % (self.name,
+                                                        self.type,
+                                                        self.api_name,
+                                                        self.index)
+
+    def array_api_define(self):
+        return "        (%s *) &%s" % (self.type, self.name)
+
+    def internal_define(self):
+        astr = """\
+#ifdef NPY_ENABLE_SEPARATE_COMPILATION
+    extern NPY_NO_EXPORT %(type)s %(name)s;
+#else
+    NPY_NO_EXPORT %(type)s %(name)s;
+#endif
+""" % {'type': self.type, 'name': self.name}
+        return astr
+
+# Dummy to be able to consistently use *Api instances for all items in the
+# array api
+class BoolValuesApi:
+    def __init__(self, name, index, api_name):
+        self.name = name
+        self.index = index
+        self.type = 'PyBoolScalarObject'
+        self.api_name = api_name
+
+    def define_from_array_api_string(self):
+        return "#define %s ((%s *)%s[%d])" % (self.name,
+                                              self.type,
+                                              self.api_name,
+                                              self.index)
+
+    def array_api_define(self):
+        return "        (void *) &%s" % self.name
+
+    def internal_define(self):
+        astr = """\
+#ifdef NPY_ENABLE_SEPARATE_COMPILATION
+extern NPY_NO_EXPORT PyBoolScalarObject _PyArrayScalar_BoolValues[2];
+#else
+NPY_NO_EXPORT PyBoolScalarObject _PyArrayScalar_BoolValues[2];
+#endif
+"""
+        return astr
+
+class FunctionApi:
+    def __init__(self, name, index, return_type, args, api_name):
+        self.name = name
+        self.index = index
+        self.return_type = return_type
+        self.args = args
+        self.api_name = api_name
+
+    def _argtypes_string(self):
+        if not self.args:
+            return 'void'
+        argstr = ', '.join([_repl(a[0]) for a in self.args])
+        return argstr
+
+    def define_from_array_api_string(self):
+        define = """\
+#define %s \\\n        (*(%s (*)(%s)) \\
+         %s[%d])""" % (self.name,
+                                self.return_type,
+                                self._argtypes_string(),
+                                self.api_name,
+                                self.index)
+        return define
+
+    def array_api_define(self):
+        return "        (void *) %s" % self.name
+
+    def internal_define(self):
+        astr = """\
+NPY_NO_EXPORT %s %s \\\n       (%s);""" % (self.return_type,
+                                           self.name,
+                                           self._argtypes_string())
+        return astr
+
+def order_dict(d):
+    """Order dict by its values."""
+    o = d.items()
+    def cmp(x, y):
+        return x[1] - y[1]
+    return sorted(o, cmp=cmp)
+
+def merge_api_dicts(dicts):
+    ret = {}
+    for d in dicts:
+        for k, v in d.items():
+            ret[k] = v
+
+    return ret
+
+def check_api_dict(d):
+    """Check that an api dict is valid (does not use the same index twice)."""
+    # We have if a same index is used twice: we 'revert' the dict so that index
+    # become keys. If the length is different, it means one index has been used
+    # at least twice
+    revert_dict = dict([(v, k) for k, v in d.items()])
+    if not len(revert_dict) == len(d):
+        # We compute a dict index -> list of associated items
+        doubled = {}
+        for name, index in d.items():
+            try:
+                doubled[index].append(name)
+            except KeyError:
+                doubled[index] = [name]
+        msg = """\
+Same index has been used twice in api definition: %s
+""" % ['index %d -> %s' % (index, names) for index, names in doubled.items() \
+                                          if len(names) != 1]
+        raise ValueError(msg)
+
+    # No 'hole' in the indexes may be allowed, and it must starts at 0
+    indexes = set(d.values())
+    expected = set(range(len(indexes)))
+    if not indexes == expected:
+        diff = expected.symmetric_difference(indexes)
+        msg = "There are some holes in the API indexing: " \
+              "(symmetric diff is %s)" % diff
+        raise ValueError(msg)
+
+def get_api_functions(tagname, api_dict):
+    """Parse source files to get functions tagged by the given tag."""
+    functions = []
+    for f in API_FILES:
+        functions.extend(find_functions(f, tagname))
+    dfunctions = []
+    for func in functions:
+        o = api_dict[func.name]
+        dfunctions.append( (o, func) )
+    dfunctions.sort()
+    return [a[1] for a in dfunctions]
+
+def fullapi_hash(api_dicts):
+    """Given a list of api dicts defining the numpy C API, compute a checksum
+    of the list of items in the API (as a string)."""
+    a = []
+    for d in api_dicts:
+        def sorted_by_values(d):
+            """Sort a dictionary by its values. Assume the dictionary items is of
+            the form func_name -> order"""
+            return sorted(d.items(), key=lambda (x, y): (y, x))
+        for name, index in sorted_by_values(d):
+            a.extend(name)
+            a.extend(str(index))
+
+    return md5new(''.join(a)).hexdigest()
+
+# To parse strings like 'hex = checksum' where hex is e.g. 0x1234567F and
+# checksum a 128 bits md5 checksum (hex format as well)
+VERRE = re.compile('(^0x[\da-f]{8})\s*=\s*([\da-f]{32})')
+
+def get_versions_hash():
+    d = []
+
+    file = os.path.join(os.path.dirname(__file__), 'cversions.txt')
+    fid = open(file, 'r')
+    try:
+        for line in fid.readlines():
+            m = VERRE.match(line)
+            if m:
+                d.append((int(m.group(1), 16), m.group(2)))
+    finally:
+        fid.close()
+
+    return dict(d)
+
 def main():
     tagname = sys.argv[1]
     order_file = sys.argv[2]
     functions = get_api_functions(tagname, order_file)
-    m = md5.new(tagname)
+    m = md5new(tagname)
     for func in functions:
         print func
         ah = func.api_hash()

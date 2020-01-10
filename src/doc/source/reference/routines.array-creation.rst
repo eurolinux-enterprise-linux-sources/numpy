@@ -36,6 +36,7 @@ From existing data
    fromfile
    fromfunction
    fromiter
+   fromstring
    loadtxt
 
 .. _routines.array-creation.rec:
@@ -65,6 +66,7 @@ Creating character arrays (:mod:`numpy.char`)
    :toctree: generated/
 
    core.defchararray.array
+   core.defchararray.asarray
 
 Numerical ranges
 ----------------

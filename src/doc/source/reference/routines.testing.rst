@@ -22,6 +22,7 @@ Asserts
    assert_array_less
    assert_equal
    assert_raises
+   assert_warns
    assert_string_equal
 
 Decorators
@@ -29,6 +30,7 @@ Decorators
 .. autosummary::
    :toctree: generated/
 
+   decorators.deprecated
    decorators.knownfailureif
    decorators.setastest
    decorators.skipif

@@ -4,11 +4,19 @@
 /* This is auto-generated */
 #include "numpyconfig.h"
 
+#if defined(_MSC_VER)
+        #define NPY_INLINE __inline
+#elif defined(__GNUC__)
+        #define NPY_INLINE inline
+#else
+        #define NPY_INLINE
+#endif
+
 /* enums for detected endianness */
 enum {
-	NPY_CPU_UNKNOWN_ENDIAN,
-	NPY_CPU_LITTLE,
-	NPY_CPU_BIG,
+        NPY_CPU_UNKNOWN_ENDIAN,
+        NPY_CPU_LITTLE,
+        NPY_CPU_BIG
 };
 
 /* Some platforms don't define bool, long long, or long double.
@@ -85,9 +93,49 @@ typedef short npy_short;
 typedef int npy_int;
 typedef long npy_long;
 
-typedef struct { float real, imag; } npy_cfloat;
+/*
+ * Disabling C99 complex usage: a lot of C code in numpy/scipy rely on being
+ * able to do .real/.imag. Will have to convert code first. 
+ */
+#if 0
+#if defined(NPY_USE_C99_COMPLEX) && defined(NPY_HAVE_COMPLEX_DOUBLE)
+typedef complex npy_cdouble;
+#else
 typedef struct { double real, imag; } npy_cdouble;
+#endif
+
+#if defined(NPY_USE_C99_COMPLEX) && defined(NPY_HAVE_COMPLEX_FLOAT)
+typedef complex float npy_cfloat;
+#else
+typedef struct { float real, imag; } npy_cfloat;
+#endif
+
+#if defined(NPY_USE_C99_COMPLEX) && defined(NPY_HAVE_COMPLEX_LONG_DOUBLE)
+typedef complex long double npy_clongdouble;
+#else
 typedef struct {npy_longdouble real, imag;} npy_clongdouble;
+#endif
+#endif
+#if NPY_SIZEOF_COMPLEX_DOUBLE != 2 * NPY_SIZEOF_DOUBLE
+#error npy_cdouble definition is not compatible with C99 complex definition ! \
+	Please contact Numpy maintainers and give detailed information about your \
+	compiler and platform
+#endif
+typedef struct { double real, imag; } npy_cdouble;
+
+#if NPY_SIZEOF_COMPLEX_FLOAT != 2 * NPY_SIZEOF_FLOAT
+#error npy_cfloat definition is not compatible with C99 complex definition ! \
+	Please contact Numpy maintainers and give detailed information about your \
+	compiler and platform
+#endif
+typedef struct { float real, imag; } npy_cfloat;
+
+#if NPY_SIZEOF_COMPLEX_LONGDOUBLE != 2 * NPY_SIZEOF_LONGDOUBLE
+#error npy_clongdouble definition is not compatible with C99 complex definition ! \
+	Please contact Numpy maintainers and give detailed information about your \
+	compiler and platform
+#endif
+typedef struct { npy_longdouble real, imag; } npy_clongdouble;
 
 /*
  * numarray-style bit-width typedefs
@@ -110,6 +158,10 @@ typedef struct {npy_longdouble real, imag;} npy_clongdouble;
 #define NPY_MAX_INT256 NPY_LONGLONG_SUFFIX(57896044618658097711785492504343953926634992332820282019728792003956564819967)
 #define NPY_MIN_INT256 (-NPY_MAX_INT256 - NPY_LONGLONG_SUFFIX(1))
 #define NPY_MAX_UINT256 NPY_ULONGLONG_SUFFIX(115792089237316195423570985008687907853269984665640564039457584007913129639935)
+#define NPY_MIN_DATETIME NPY_MIN_INT64
+#define NPY_MAX_DATETIME NPY_MAX_INT64
+#define NPY_MIN_TIMEDELTA NPY_MIN_INT64
+#define NPY_MAX_TIMEDELTA NPY_MAX_INT64
 
         /* Need to find the number of bits for each type and
            make definitions accordingly.
@@ -143,6 +195,9 @@ typedef struct {npy_longdouble real, imag;} npy_clongdouble;
 #define NPY_MIN_LONG  LONG_MIN
 #define NPY_MAX_ULONG  ULONG_MAX
 
+#define NPY_SIZEOF_DATETIME 8
+#define NPY_SIZEOF_TIMEDELTA 8
+
 #define NPY_BITSOF_BOOL (sizeof(npy_bool)*CHAR_BIT)
 #define NPY_BITSOF_CHAR CHAR_BIT
 #define NPY_BITSOF_SHORT (NPY_SIZEOF_SHORT * CHAR_BIT)
@@ -152,6 +207,8 @@ typedef struct {npy_longdouble real, imag;} npy_clongdouble;
 #define NPY_BITSOF_FLOAT (NPY_SIZEOF_FLOAT * CHAR_BIT)
 #define NPY_BITSOF_DOUBLE (NPY_SIZEOF_DOUBLE * CHAR_BIT)
 #define NPY_BITSOF_LONGDOUBLE (NPY_SIZEOF_LONGDOUBLE * CHAR_BIT)
+#define NPY_BITSOF_DATETIME (NPY_SIZEOF_DATETIME * CHAR_BIT)
+#define NPY_BITSOF_TIMEDELTA (NPY_SIZEOF_TIMEDELTA * CHAR_BIT)
 
 #if NPY_BITSOF_LONG == 8
 #define NPY_INT8 NPY_LONG
@@ -198,6 +255,8 @@ typedef struct {npy_longdouble real, imag;} npy_clongdouble;
 #define PyUInt64ArrType_Type PyULongArrType_Type
 #define NPY_INT64_FMT NPY_LONG_FMT
 #define NPY_UINT64_FMT NPY_ULONG_FMT
+#define MyPyLong_FromInt64 PyLong_FromLong
+#define MyPyLong_AsInt64 PyLong_AsLong
 #elif NPY_BITSOF_LONG == 128
 #define NPY_INT128 NPY_LONG
 #define NPY_UINT128 NPY_ULONG
@@ -272,6 +331,8 @@ typedef struct {npy_longdouble real, imag;} npy_clongdouble;
 #    define PyUInt64ArrType_Type PyULongLongArrType_Type
 #define NPY_INT64_FMT NPY_LONGLONG_FMT
 #define NPY_UINT64_FMT NPY_ULONGLONG_FMT
+#    define MyPyLong_FromInt64 PyLong_FromLongLong
+#    define MyPyLong_AsInt64 PyLong_AsLongLong
 #  endif
 #  define NPY_MAX_LONGLONG NPY_MAX_INT64
 #  define NPY_MIN_LONGLONG NPY_MIN_INT64
@@ -360,6 +421,8 @@ typedef struct {npy_longdouble real, imag;} npy_clongdouble;
 #    define PyUInt64ArrType_Type PyUIntArrType_Type
 #define NPY_INT64_FMT NPY_INT_FMT
 #define NPY_UINT64_FMT NPY_UINT_FMT
+#    define MyPyLong_FromInt64 PyLong_FromLong
+#    define MyPyLong_AsInt64 PyLong_AsLong
 #endif
 #elif NPY_BITSOF_INT == 128
 #ifndef NPY_INT128
@@ -428,6 +491,8 @@ typedef struct {npy_longdouble real, imag;} npy_clongdouble;
 #    define PyUInt64ArrType_Type PyUShortArrType_Type
 #define NPY_INT64_FMT NPY_SHORT_FMT
 #define NPY_UINT64_FMT NPY_USHORT_FMT
+#    define MyPyLong_FromInt64 PyLong_FromLong
+#    define MyPyLong_AsInt64 PyLong_AsLong
 #endif
 #elif NPY_BITSOF_SHORT == 128
 #ifndef NPY_INT128
@@ -497,6 +562,8 @@ typedef struct {npy_longdouble real, imag;} npy_clongdouble;
 #    define PyUInt64ArrType_Type PyUByteArrType_Type
 #define NPY_INT64_FMT NPY_BYTE_FMT
 #define NPY_UINT64_FMT NPY_UBYTE_FMT
+#    define MyPyLong_FromInt64 PyLong_FromLong
+#    define MyPyLong_AsInt64 PyLong_AsLong
 #endif
 #elif NPY_BITSOF_CHAR == 128
 #ifndef NPY_INT128
@@ -768,6 +835,12 @@ typedef struct {npy_longdouble real, imag;} npy_clongdouble;
 #define NPY_FLOAT256_FMT NPY_LONGDOUBLE_FMT
 #define NPY_COMPLEX512_FMT NPY_CLONGDOUBLE_FMT
 #endif
+
+/* datetime typedefs */
+typedef npy_int64 npy_timedelta;
+typedef npy_int64 npy_datetime;
+#define NPY_DATETIME_FMT NPY_INT64_FMT
+#define NPY_TIMEDELTA_FMT NPY_INT64_FMT
 
 /* End of typedefs for numarray style bit-width names */
 

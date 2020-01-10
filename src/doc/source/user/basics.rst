@@ -8,10 +8,13 @@ Numpy basics
    and "Guide to Numpy" chapter 2. Needs combining?
 
 .. toctree::
+   :maxdepth: 2
 
    basics.types
    basics.creation
+   basics.io
    basics.indexing
    basics.broadcasting
+   basics.byteswapping
    basics.rec
    basics.subclassing

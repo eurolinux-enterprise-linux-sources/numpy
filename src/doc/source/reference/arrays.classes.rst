@@ -47,14 +47,29 @@ customize:
    update meta-information from the "parent." Subclasses inherit a
    default implementation of this method that does nothing.
 
-.. function:: __array_wrap__(array)
+.. function:: __array_prepare__(array, context=None)
 
-   This method should return an instance of the subclass from the
-   :class:`ndarray` object passed in. For example, this is called
-   after every :ref:`ufunc <ufuncs.output-type>` for the object with
-   the highest array priority. The ufunc-computed array object is
-   passed in and whatever is returned is passed to the
-   user. Subclasses inherit a default implementation of this method.
+   At the beginning of every :ref:`ufunc <ufuncs.output-type>`, this
+   method is called on the input object with the highest array
+   priority, or the output object if one was specified. The output
+   array is passed in and whatever is returned is passed to the ufunc.
+   Subclasses inherit a default implementation of this method which
+   simply returns the output array unmodified. Subclasses may opt to
+   use this method to transform the output array into an instance of
+   the subclass and update metadata before returning the array to the
+   ufunc for computation.
+
+.. function:: __array_wrap__(array, context=None)
+
+   At the end of every :ref:`ufunc <ufuncs.output-type>`, this method
+   is called on the input object with the highest array priority, or
+   the output object if one was specified. The ufunc-computed array
+   is passed in and whatever is returned is passed to the user.
+   Subclasses inherit a default implementation of this method, which
+   transforms the array into a new instance of the object's class. Subclasses
+   may opt to use this method to transform the output array into an
+   instance of the subclass and update metadata before returning the
+   array to the user.
 
 .. data:: __array_priority__
 
@@ -212,7 +227,13 @@ Character arrays (:mod:`numpy.char`)
 .. index::
    single: character arrays
 
-These are enhanced arrays of either :class:`string` type or
+.. note::
+   The chararray module exists for backwards compatibility with
+   Numarray, it is not recommended for new development. If one needs
+   arrays of strings, use arrays of `dtype` `object_`, `str` or
+   `unicode`.
+
+These are enhanced arrays of either :class:`string_` type or
 :class:`unicode_` type.  These arrays inherit from the
 :class:`ndarray`, but specially-define the operations ``+``, ``*``,
 and ``%`` on a (broadcasting) element-by-element basis.  These
@@ -221,10 +242,10 @@ character type. In addition, the :class:`chararray` has all of the
 standard :class:`string <str>` (and :class:`unicode`) methods,
 executing them on an element-by-element basis. Perhaps the easiest way
 to create a chararray is to use :meth:`self.view(chararray)
-<ndarray.view>` where *self* is an ndarray of string or unicode
+<ndarray.view>` where *self* is an ndarray of str or unicode
 data-type. However, a chararray can also be created using the
 :meth:`numpy.chararray` constructor, or via the
-:func:`numpy.char.array` function:
+:func:`numpy.char.array <core.defchararray.array>` function:
 
 .. autosummary::
    :toctree: generated/
@@ -232,7 +253,7 @@ data-type. However, a chararray can also be created using the
    chararray
    core.defchararray.array
 
-Another difference with the standard ndarray of string data-type is
+Another difference with the standard ndarray of str data-type is
 that the chararray inherits the feature introduced by Numarray that
 white-space at the end of any element in the array will be ignored on
 item retrieval and comparison operations.

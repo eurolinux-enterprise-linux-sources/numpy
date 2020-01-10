@@ -15,7 +15,7 @@ from distutils.ccompiler import CompileError, LinkError
 import distutils
 from numpy.distutils.exec_command import exec_command
 from numpy.distutils.mingw32ccompiler import generate_manifest
-from numpy.distutils.command.autodist import check_inline
+from numpy.distutils.command.autodist import check_inline, check_compiler_gcc4
 
 LANG_EXT['f77'] = '.f'
 LANG_EXT['f90'] = '.f90'
@@ -165,6 +165,35 @@ int main()
 }""" % (symbol, symbol)
 
         return self.try_compile(body, headers, include_dirs)
+
+    def check_type(self, type_name, headers=None, include_dirs=None,
+            library_dirs=None):
+        """Check type availability. Return True if the type can be compiled,
+        False otherwise"""
+        self._check_compiler()
+
+        # First check the type can be compiled
+        body = r"""
+int main() {
+  if ((%(name)s *) 0)
+    return 0;
+  if (sizeof (%(name)s))
+    return 0;
+}
+""" % {'name': type_name}
+
+        st = False
+        try:
+            try:
+                self._compile(body % {'type': type_name},
+                        headers, include_dirs, 'c')
+                st = True
+            except distutils.errors.CompileError, e:
+                st = False
+        finally:
+            self._clean()
+
+        return st
 
     def check_type_size(self, type_name, headers=None, include_dirs=None, library_dirs=None, expected=None):
         """Check size of a given type."""
@@ -345,6 +374,10 @@ int main ()
         """Return the inline keyword recognized by the compiler, empty string
         otherwise."""
         return check_inline(self)
+
+    def check_compiler_gcc4(self):
+        """Return True if the C compiler is gcc >= 4."""
+        return check_compiler_gcc4(self)
 
     def get_output(self, body, headers=None, include_dirs=None,
                    libraries=None, library_dirs=None,

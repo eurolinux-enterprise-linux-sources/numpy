@@ -1,3 +1,6 @@
+import warnings
+import sys
+
 import numpy as np
 from numpy.testing import *
 import unittest
@@ -48,7 +51,7 @@ class _GenericTest(object):
         a = np.array([1, 1], dtype=np.object)
         self._test_equal(a, 1)
 
-class TestEqual(_GenericTest, unittest.TestCase):
+class TestArrayEqual(_GenericTest, unittest.TestCase):
     def setUp(self):
         self._assert_func = assert_array_equal
 
@@ -126,11 +129,148 @@ class TestEqual(_GenericTest, unittest.TestCase):
 
         self._test_not_equal(c, b)
 
+class TestEqual(TestArrayEqual):
+    def setUp(self):
+        self._assert_func = assert_equal
 
-class TestAlmostEqual(_GenericTest, unittest.TestCase):
+    def test_nan_items(self):
+        self._assert_func(np.nan, np.nan)
+        self._assert_func([np.nan], [np.nan])
+        self._test_not_equal(np.nan, [np.nan])
+        self._test_not_equal(np.nan, 1)
+
+    def test_inf_items(self):
+        self._assert_func(np.inf, np.inf)
+        self._assert_func([np.inf], [np.inf])
+        self._test_not_equal(np.inf, [np.inf])
+
+    def test_non_numeric(self):
+        self._assert_func('ab', 'ab')
+        self._test_not_equal('ab', 'abb')
+
+    def test_complex_item(self):
+        self._assert_func(complex(1, 2), complex(1, 2))
+        self._assert_func(complex(1, np.nan), complex(1, np.nan))
+        self._test_not_equal(complex(1, np.nan), complex(1, 2))
+        self._test_not_equal(complex(np.nan, 1), complex(1, np.nan))
+        self._test_not_equal(complex(np.nan, np.inf), complex(np.nan, 2))
+
+    def test_negative_zero(self):
+        self._test_not_equal(np.PZERO, np.NZERO)
+
+    def test_complex(self):
+        x = np.array([complex(1, 2), complex(1, np.nan)])
+        y = np.array([complex(1, 2), complex(1, 2)])
+        self._assert_func(x, x)
+        self._test_not_equal(x, y)
+
+class TestArrayAlmostEqual(_GenericTest, unittest.TestCase):
     def setUp(self):
         self._assert_func = assert_array_almost_equal
 
+    def test_simple(self):
+        x = np.array([1234.2222])
+        y = np.array([1234.2223])
+
+        self._assert_func(x, y, decimal=3)
+        self._assert_func(x, y, decimal=4)
+        self.failUnlessRaises(AssertionError,
+                lambda: self._assert_func(x, y, decimal=5))
+
+    def test_nan(self):
+        anan = np.array([np.nan])
+        aone = np.array([1])
+        ainf = np.array([np.inf])
+        self._assert_func(anan, anan)
+        self.failUnlessRaises(AssertionError,
+                lambda : self._assert_func(anan, aone))
+        self.failUnlessRaises(AssertionError,
+                lambda : self._assert_func(anan, ainf))
+        self.failUnlessRaises(AssertionError,
+                lambda : self._assert_func(ainf, anan))
+
+class TestAlmostEqual(_GenericTest, unittest.TestCase):
+    def setUp(self):
+        self._assert_func = assert_almost_equal
+
+    def test_nan_item(self):
+        self._assert_func(np.nan, np.nan)
+        self.failUnlessRaises(AssertionError,
+                lambda : self._assert_func(np.nan, 1))
+        self.failUnlessRaises(AssertionError,
+                lambda : self._assert_func(np.nan, np.inf))
+        self.failUnlessRaises(AssertionError,
+                lambda : self._assert_func(np.inf, np.nan))
+
+    def test_inf_item(self):
+        self._assert_func(np.inf, np.inf)
+        self._assert_func(-np.inf, -np.inf)
+
+    def test_simple_item(self):
+        self._test_not_equal(1, 2)
+
+    def test_complex_item(self):
+        self._assert_func(complex(1, 2), complex(1, 2))
+        self._assert_func(complex(1, np.nan), complex(1, np.nan))
+        self._assert_func(complex(np.inf, np.nan), complex(np.inf, np.nan))
+        self._test_not_equal(complex(1, np.nan), complex(1, 2))
+        self._test_not_equal(complex(np.nan, 1), complex(1, np.nan))
+        self._test_not_equal(complex(np.nan, np.inf), complex(np.nan, 2))
+
+    def test_complex(self):
+        x = np.array([complex(1, 2), complex(1, np.nan)])
+        z = np.array([complex(1, 2), complex(np.nan, 1)])
+        y = np.array([complex(1, 2), complex(1, 2)])
+        self._assert_func(x, x)
+        self._test_not_equal(x, y)
+        self._test_not_equal(x, z)
+
+class TestApproxEqual(unittest.TestCase):
+    def setUp(self):
+        self._assert_func = assert_approx_equal
+
+    def test_simple_arrays(self):
+        x = np.array([1234.22])
+        y = np.array([1234.23])
+
+        self._assert_func(x, y, significant=5)
+        self._assert_func(x, y, significant=6)
+        self.failUnlessRaises(AssertionError,
+                lambda: self._assert_func(x, y, significant=7))
+
+    def test_simple_items(self):
+        x = 1234.22
+        y = 1234.23
+
+        self._assert_func(x, y, significant=4)
+        self._assert_func(x, y, significant=5)
+        self._assert_func(x, y, significant=6)
+        self.failUnlessRaises(AssertionError,
+                lambda: self._assert_func(x, y, significant=7))
+
+    def test_nan_array(self):
+        anan = np.array(np.nan)
+        aone = np.array(1)
+        ainf = np.array(np.inf)
+        self._assert_func(anan, anan)
+        self.failUnlessRaises(AssertionError,
+                lambda : self._assert_func(anan, aone))
+        self.failUnlessRaises(AssertionError,
+                lambda : self._assert_func(anan, ainf))
+        self.failUnlessRaises(AssertionError,
+                lambda : self._assert_func(ainf, anan))
+
+    def test_nan_items(self):
+        anan = np.array(np.nan)
+        aone = np.array(1)
+        ainf = np.array(np.inf)
+        self._assert_func(anan, anan)
+        self.failUnlessRaises(AssertionError,
+                lambda : self._assert_func(anan, aone))
+        self.failUnlessRaises(AssertionError,
+                lambda : self._assert_func(anan, ainf))
+        self.failUnlessRaises(AssertionError,
+                lambda : self._assert_func(ainf, anan))
 
 class TestRaises(unittest.TestCase):
     def setUp(self):
@@ -164,6 +304,130 @@ class TestRaises(unittest.TestCase):
         else:
             raise AssertionError("should have raised an AssertionError")
 
+class TestWarns(unittest.TestCase):
+    def test_warn(self):
+        def f():
+            warnings.warn("yo")
 
+        before_filters = sys.modules['warnings'].filters[:]
+        assert_warns(UserWarning, f)
+        after_filters = sys.modules['warnings'].filters
+
+        # Check that the warnings state is unchanged
+        assert_equal(before_filters, after_filters,
+                     "assert_warns does not preserver warnings state")
+
+    def test_warn_wrong_warning(self):
+        def f():
+            warnings.warn("yo", DeprecationWarning)
+
+        failed = False
+        filters = sys.modules['warnings'].filters[:]
+        try:
+            try:
+                # Should raise an AssertionError
+                assert_warns(UserWarning, f)
+                failed = True
+            except AssertionError:
+                pass
+        finally:
+            sys.modules['warnings'].filters = filters
+
+        if failed:
+            raise AssertionError("wrong warning caught by assert_warn")
+
+class TestArrayAlmostEqualNulp(unittest.TestCase):
+    def test_simple(self):
+        dev = np.random.randn(10)
+        x = np.ones(10)
+        y = x + dev * np.finfo(np.float64).eps
+        assert_array_almost_equal_nulp(x, y, nulp=2 * np.max(dev))
+
+    def test_simple2(self):
+        x = np.random.randn(10)
+        y = 2 * x
+        def failure():
+            return assert_array_almost_equal_nulp(x, y,
+                                                  nulp=1000)
+        self.failUnlessRaises(AssertionError, failure)
+
+    def test_big_float32(self):
+        x = (1e10 * np.random.randn(10)).astype(np.float32)
+        y = x + 1
+        assert_array_almost_equal_nulp(x, y, nulp=1000)
+
+    def test_big_float64(self):
+        x = 1e10 * np.random.randn(10)
+        y = x + 1
+        def failure():
+            assert_array_almost_equal_nulp(x, y, nulp=1000)
+        self.failUnlessRaises(AssertionError, failure)
+
+    def test_complex(self):
+        x = np.random.randn(10) + 1j * np.random.randn(10)
+        y = x + 1
+        def failure():
+            assert_array_almost_equal_nulp(x, y, nulp=1000)
+        self.failUnlessRaises(AssertionError, failure)
+
+    def test_complex2(self):
+        x = np.random.randn(10)
+        y = np.array(x, np.complex) + 1e-16 * np.random.randn(10)
+
+        assert_array_almost_equal_nulp(x, y, nulp=1000)
+
+class TestULP(unittest.TestCase):
+    def test_equal(self):
+        x = np.random.randn(10)
+        assert_array_max_ulp(x, x, maxulp=0)
+
+    def test_single(self):
+        # Generate 1 + small deviation, check that adding eps gives a few UNL
+        x = np.ones(10).astype(np.float32)
+        x += 0.01 * np.random.randn(10).astype(np.float32)
+        eps = np.finfo(np.float32).eps
+        assert_array_max_ulp(x, x+eps, maxulp=20)
+
+    def test_double(self):
+        # Generate 1 + small deviation, check that adding eps gives a few UNL
+        x = np.ones(10).astype(np.float32)
+        x += 0.01 * np.random.randn(10).astype(np.float64)
+        eps = np.finfo(np.float64).eps
+        assert_array_max_ulp(x, x+eps, maxulp=200)
+
+    def test_inf(self):
+        for dt in [np.float32, np.float64]:
+            inf = np.array([np.inf]).astype(dt)
+            big = np.array([np.finfo(dt).max])
+            assert_array_max_ulp(inf, big, maxulp=200)
+
+    def test_nan(self):
+        # Test that nan is 'far' from small, tiny, inf, max and min
+        for dt in [np.float32, np.float64]:
+            if dt == np.float32:
+                maxulp = 1e6
+            else:
+                maxulp = 1e12
+            inf = np.array([np.inf]).astype(dt)
+            nan = np.array([np.nan]).astype(dt)
+            big = np.array([np.finfo(dt).max])
+            tiny = np.array([np.finfo(dt).tiny])
+            zero = np.array([np.PZERO]).astype(dt)
+            nzero = np.array([np.NZERO]).astype(dt)
+            self.failUnlessRaises(AssertionError,
+                                  lambda: assert_array_max_ulp(nan, inf,
+                                                               maxulp=maxulp))
+            self.failUnlessRaises(AssertionError,
+                                  lambda: assert_array_max_ulp(nan, big,
+                                                               maxulp=maxulp))
+            self.failUnlessRaises(AssertionError,
+                                  lambda: assert_array_max_ulp(nan, tiny,
+                                                               maxulp=maxulp))
+            self.failUnlessRaises(AssertionError,
+                                  lambda: assert_array_max_ulp(nan, zero,
+                                                               maxulp=maxulp))
+            self.failUnlessRaises(AssertionError,
+                                  lambda: assert_array_max_ulp(nan, nzero,
+                                                               maxulp=maxulp))
 if __name__ == '__main__':
     run_module_suite()

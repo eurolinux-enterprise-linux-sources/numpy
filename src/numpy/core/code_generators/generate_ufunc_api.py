@@ -1,10 +1,19 @@
 import os
 import genapi
 
+import numpy_api
+
+from genapi import \
+        TypeApi, GlobalVarApi, FunctionApi, BoolValuesApi
+
 h_template = r"""
 #ifdef _UMATHMODULE
 
-static PyTypeObject PyUFunc_Type;
+#ifdef NPY_ENABLE_SEPARATE_COMPILATION
+extern NPY_NO_EXPORT PyTypeObject PyUFunc_Type;
+#else
+NPY_NO_EXPORT PyTypeObject PyUFunc_Type;
+#endif
 
 %s
 
@@ -23,8 +32,6 @@ void **PyUFunc_API;
 static void **PyUFunc_API=NULL;
 #endif
 #endif
-
-#define PyUFunc_Type (*(PyTypeObject *)PyUFunc_API[0])
 
 %s
 
@@ -64,7 +71,6 @@ c_template = r"""
 */
 
 void *PyUFunc_API[] = {
-        (void *) &PyUFunc_Type,
 %s
 };
 """
@@ -91,21 +97,35 @@ def do_generate_api(targets, sources):
     c_file = targets[1]
     doc_file = targets[2]
 
-    ufunc_api_list = genapi.get_api_functions('UFUNC_API', sources[0])
+    ufunc_api_index = genapi.merge_api_dicts((
+            numpy_api.ufunc_funcs_api,
+            numpy_api.ufunc_types_api))
+    genapi.check_api_dict(ufunc_api_index)
 
-    # API fixes for __arrayobject_api.h
+    ufunc_api_list = genapi.get_api_functions('UFUNC_API', numpy_api.ufunc_funcs_api)
 
-    fixed = 1
-    nummulti = len(ufunc_api_list)
-    numtotal = fixed + nummulti
+    # Create dict name -> *Api instance
+    ufunc_api_dict = {}
+    api_name = 'PyUFunc_API'
+    for f in ufunc_api_list:
+        name = f.name
+        index = ufunc_api_index[name]
+        ufunc_api_dict[name] = FunctionApi(f.name, index, f.return_type,
+                                           f.args, api_name)
 
+    for name, index in numpy_api.ufunc_types_api.items():
+        ufunc_api_dict[name] = TypeApi(name, index, 'PyTypeObject', api_name)
+
+    # set up object API
     module_list = []
     extension_list = []
     init_list = []
 
-    # set up object API
-    genapi.add_api_list(fixed, 'PyUFunc_API', ufunc_api_list,
-                        module_list, extension_list, init_list)
+    for name, index in genapi.order_dict(ufunc_api_index):
+        api_item = ufunc_api_dict[name]
+        extension_list.append(api_item.define_from_array_api_string())
+        init_list.append(api_item.array_api_define())
+        module_list.append(api_item.internal_define())
 
     # Write to header
     fid = open(header_file, 'w')
@@ -115,7 +135,7 @@ def do_generate_api(targets, sources):
 
     # Write to c-code
     fid = open(c_file, 'w')
-    s = c_template % '\n'.join(init_list)
+    s = c_template % ',\n'.join(init_list)
     fid.write(s)
     fid.close()
 

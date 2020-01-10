@@ -2,6 +2,7 @@ __all__ = ['memmap']
 
 import warnings
 from numeric import uint8, ndarray, dtype
+import sys
 
 dtypedescr = dtype
 valid_filemodes = ["r", "c", "r+", "w+"]
@@ -16,7 +17,7 @@ mode_equivalents = {
 
 class memmap(ndarray):
     """
-    Create a memory-map to an array stored in a file on disk.
+    Create a memory-map to an array stored in a *binary* file on disk.
 
     Memory-mapped files are used for accessing small segments of large files
     on disk, without reading the entire file into memory.  Numpy's
@@ -25,12 +26,11 @@ class memmap(ndarray):
 
     Parameters
     ----------
-    filename : string or file-like object
-        The file name or file object to be used as the array data
-        buffer.
+    filename : str or file-like object
+        The file name or file object to be used as the array data buffer.
     dtype : data-type, optional
         The data-type used to interpret the file contents.
-        Default is `uint8`
+        Default is `uint8`.
     mode : {'r+', 'r', 'w+', 'c'}, optional
         The file is opened in this mode:
 
@@ -47,17 +47,17 @@ class memmap(ndarray):
         +------+-------------------------------------------------------------+
 
         Default is 'r+'.
-    offset : integer, optional
-        In the file, array data starts at this offset.  `offset` should be
-        a multiple of the byte-size of `dtype`.  Requires `shape=None`.
-        The default is 0.
+    offset : int, optional
+        In the file, array data starts at this offset. Since `offset` is
+        measured in bytes, it should be a multiple of the byte-size of
+        `dtype`. Requires ``shape=None``. The default is 0.
     shape : tuple, optional
         The desired shape of the array. By default, the returned array will be
         1-D with the number of elements determined by file size and data-type.
     order : {'C', 'F'}, optional
         Specify the order of the ndarray memory layout: C (row-major) or
         Fortran (column-major).  This only has an effect if the shape is
-        greater than 1-D.  The defaullt order is 'C'.
+        greater than 1-D.  The default order is 'C'.
 
     Methods
     -------
@@ -74,10 +74,7 @@ class memmap(ndarray):
     Given a memmap ``fp``, ``isinstance(fp, numpy.ndarray)`` returns
     ``True``.
 
-    Notes
-    -----
-
-    Memory-mapped arrays use the the Python memory-map object which
+    Memory-mapped arrays use the Python memory-map object which
     (prior to Python 2.5) does not allow files to be larger than a
     certain size depending on the platform. This size is always < 2GB
     even on 64-bit systems.
@@ -127,13 +124,6 @@ class memmap(ndarray):
     >>> fpr = np.memmap(filename, dtype='float32', mode='r', shape=(3,4))
     >>> fpr.flags.writeable
     False
-
-    Cannot assign to read-only, obviously:
-
-    >>> fpr[0, 3] = 56
-    Traceback (most recent call last):
-        ...
-    RuntimeError: array is not writeable
 
     Copy-on-write memmap:
 
@@ -189,13 +179,13 @@ class memmap(ndarray):
         if (mode == 'w+') and shape is None:
             raise ValueError, "shape must be given"
 
-        fid.seek(0,2)
+        fid.seek(0, 2)
         flen = fid.tell()
         descr = dtypedescr(dtype)
         _dbytes = descr.itemsize
 
         if shape is None:
-            bytes = flen-offset
+            bytes = flen - offset
             if (bytes % _dbytes):
                 fid.close()
                 raise ValueError, "Size of available data is not a "\
@@ -212,7 +202,7 @@ class memmap(ndarray):
         bytes = long(offset + size*_dbytes)
 
         if mode == 'w+' or (mode == 'r+' and flen < bytes):
-            fid.seek(bytes-1,0)
+            fid.seek(bytes - 1, 0)
             fid.write(chr(0))
             fid.flush()
 
@@ -223,10 +213,17 @@ class memmap(ndarray):
         else:
             acc = mmap.ACCESS_WRITE
 
-        mm = mmap.mmap(fid.fileno(), bytes, access=acc)
+        if sys.version_info[:2] >= (2,6):
+            # The offset keyword in mmap.mmap needs Python >= 2.6
+            start = offset - offset % mmap.ALLOCATIONGRANULARITY
+            bytes -= start
+            offset -= start
+            mm = mmap.mmap(fid.fileno(), bytes, access=acc, offset=start)
+        else:
+            mm = mmap.mmap(fid.fileno(), bytes, access=acc)
 
         self = ndarray.__new__(subtype, shape, dtype=descr, buffer=mm,
-                               offset=offset, order=order)
+            offset=offset, order=order)
         self._mmap = mm
         return self
 
@@ -237,12 +234,25 @@ class memmap(ndarray):
             self._mmap = None
 
     def flush(self):
-        """Flush any changes in the array to the file on disk."""
+        """
+        Write any changes in the array to the file on disk.
+
+        For further information, see `memmap`.
+
+        Parameters
+        ----------
+        None
+
+        See Also
+        --------
+        memmap
+
+        """
         if self._mmap is not None:
             self._mmap.flush()
 
     def sync(self):
-        """Flush any changes in the array to the file on disk."""
+        """This method is deprecated, use `flush`."""
         warnings.warn("Use ``flush``.", DeprecationWarning)
         self.flush()
 

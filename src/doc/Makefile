@@ -9,6 +9,8 @@ SPHINXOPTS    =
 SPHINXBUILD   = LANG=C sphinx-build
 PAPER         =
 
+NEED_AUTOSUMMARY = $(shell $(PYTHON) -c 'import sphinx; print sphinx.__version__ < "0.7" and "1" or ""')
+
 # Internal variables.
 PAPEROPT_a4     = -D latex_paper_size=a4
 PAPEROPT_letter = -D latex_paper_size=letter
@@ -49,7 +51,7 @@ clean:
 INSTALL_DIR = $(CURDIR)/build/inst-dist/
 INSTALL_PPH = $(INSTALL_DIR)/lib/python$(PYVER)/site-packages:$(INSTALL_DIR)/local/lib/python$(PYVER)/site-packages:$(INSTALL_DIR)/lib/python$(PYVER)/dist-packages:$(INSTALL_DIR)/local/lib/python$(PYVER)/dist-packages
 
-DIST_VARS=SPHINXBUILD="LANG=C PYTHONPATH=$(INSTALL_PPH) python$(PYVER) `which sphinx-build`" PYTHON="PYTHONPATH=$(INSTALL_PPH) python$(PYVER)"
+DIST_VARS=SPHINXBUILD="LANG=C PYTHONPATH=$(INSTALL_PPH) python$(PYVER) `which sphinx-build`" PYTHON="PYTHONPATH=$(INSTALL_PPH) python$(PYVER)" SPHINXOPTS="$(SPHINXOPTS)"
 
 UPLOAD_TARGET = $(USER)@docs.scipy.org:/home/docserver/www-root/doc/numpy/
 
@@ -95,9 +97,11 @@ dist-build:
 generate: build/generate-stamp
 build/generate-stamp: $(wildcard source/reference/*.rst)
 	mkdir -p build
+ifeq ($(NEED_AUTOSUMMARY),1)
 	$(PYTHON) \
 		./sphinxext/autosummary_generate.py source/reference/*.rst \
 		-p dump.xml -o source/reference/generated 
+endif
 	touch build/generate-stamp
 
 html: generate
@@ -127,6 +131,10 @@ htmlhelp: generate
 htmlhelp-build: htmlhelp build/htmlhelp/numpy.chm
 %.chm: %.hhp
 	-hhc.exe $^
+
+qthelp: generate
+	mkdir -p build/qthelp build/doctrees
+	$(SPHINXBUILD) -b qthelp $(ALLSPHINXOPTS) build/qthelp
 
 latex: generate
 	mkdir -p build/latex build/doctrees

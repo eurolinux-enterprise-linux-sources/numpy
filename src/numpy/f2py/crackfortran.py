@@ -84,7 +84,7 @@ f2py_version = __version__.version
       D['typespec'] = 'byte' | 'character' | 'complex' | 'double complex' |
                       'double precision' | 'integer' | 'logical' | 'real' | 'type'
       D['attrspec'] --- list of attributes (e.g. 'dimension(<arrayspec>)',
-                        'external','intent(in|out|inout|hide|c|callback|cache)',
+                        'external','intent(in|out|inout|hide|c|callback|cache|aligned4|aligned8|aligned16)',
                         'optional','required', etc)
       K = D['kindselector'] = {['*','kind']} (only if D['typespec'] =
                           'complex' | 'integer' | 'logical' | 'real' )
@@ -978,7 +978,7 @@ def analyzeline(m,case,line):
                                replace(',','+1j*(')
             try:
                 v = eval(initexpr,{},params)
-            except (SyntaxError,NameError),msg:
+            except (SyntaxError,NameError,TypeError),msg:
                 errmess('analyzeline: Failed to evaluate %r. Ignoring: %s\n'\
                         % (initexpr, msg))
                 continue
@@ -1942,9 +1942,9 @@ def _kind_func(string):
     if string[0] in "'\"":
         string = string[1:-1]
     if real16pattern.match(string):
-        return 16
-    elif real8pattern.match(string):
         return 8
+    elif real8pattern.match(string):
+        return 4
     return 'kind('+string+')'
 
 def _selected_int_kind_func(r):

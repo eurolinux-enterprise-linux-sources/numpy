@@ -3,39 +3,36 @@ Set operations for 1D numeric arrays based on sorting.
 
 :Contains:
   ediff1d,
-  unique1d,
+  unique,
   intersect1d,
-  intersect1d_nu,
   setxor1d,
-  setmember1d,
+  in1d,
   union1d,
   setdiff1d
 
+:Deprecated:
+  unique1d,
+  intersect1d_nu,
+  setmember1d
+
 :Notes:
 
-All functions work best with integer numerical arrays on input (e.g. indices).
-For floating point arrays, innacurate results may appear due to usual round-off
+For floating point arrays, inaccurate results may appear due to usual round-off
 and floating point comparison issues.
 
-Except unique1d, union1d and intersect1d_nu, all functions expect inputs with
-unique elements. Speed could be gained in some operations by an implementaion of
-sort(), that can provide directly the permutation vectors, avoiding thus calls
-to argsort().
+Speed could be gained in some operations by an implementation of
+sort(), that can provide directly the permutation vectors, avoiding
+thus calls to argsort().
 
-Run _test_unique1d_speed() to compare performance of numpy.unique1d() and
-numpy.unique() - it should be the same.
-
-To do: Optionally return indices analogously to unique1d for all functions.
-
-created:       01.11.2005
-last revision: 07.01.2007
+To do: Optionally return indices analogously to unique for all functions.
 
 :Author: Robert Cimrman
 """
 __all__ = ['ediff1d', 'unique1d', 'intersect1d', 'intersect1d_nu', 'setxor1d',
-           'setmember1d', 'union1d', 'setdiff1d']
+           'setmember1d', 'union1d', 'setdiff1d', 'unique', 'in1d']
 
 import numpy as np
+from numpy.lib.utils import deprecate
 
 def ediff1d(ary, to_end=None, to_begin=None):
     """
@@ -43,24 +40,41 @@ def ediff1d(ary, to_end=None, to_begin=None):
 
     Parameters
     ----------
-    ary : array
-        This array will be flattened before the difference is taken.
-    to_end : number, optional
-        If provided, this number will be tacked onto the end of the returned
-        differences.
-    to_begin : number, optional
-        If provided, this number will be taked onto the beginning of the
-        returned differences.
+    ary : array_like
+        If necessary, will be flattened before the differences are taken.
+    to_end : array_like, optional
+        Number(s) to append at the end of the returned differences.
+    to_begin : array_like, optional
+        Number(s) to prepend at the beginning of the returned differences.
 
     Returns
     -------
-    ed : array
-        The differences. Loosely, this will be (ary[1:] - ary[:-1]).
+    ed : ndarray
+        The differences. Loosely, this is ``ary.flat[1:] - ary.flat[:-1]``.
+
+    See Also
+    --------
+    diff, gradient
 
     Notes
     -----
     When applied to masked arrays, this function drops the mask information
-    if the `to_begin` and/or `to_end` parameters are used
+    if the `to_begin` and/or `to_end` parameters are used.
+
+    Examples
+    --------
+    >>> x = np.array([1, 2, 4, 7, 0])
+    >>> np.ediff1d(x)
+    array([ 1,  2,  3, -7])
+
+    >>> np.ediff1d(x, to_begin=-99, to_end=np.array([88, 99]))
+    array([-99,   1,   2,   3,  -7,  88,  99])
+
+    The returned array is always 1D.
+
+    >>> y = [[1, 2, 4], [1, 6, 24]]
+    >>> np.ediff1d(y)
+    array([ 1,  2, -3,  5, 18])
 
     """
     ary = np.asanyarray(ary).flat
@@ -72,63 +86,342 @@ def ediff1d(ary, to_end=None, to_begin=None):
         arrays.append(to_end)
 
     if len(arrays) != 1:
-        # We'll save ourselves a copy of a potentially large array in the common
-        # case where neither to_begin or to_end was given.
+        # We'll save ourselves a copy of a potentially large array in
+        # the common case where neither to_begin or to_end was given.
         ed = np.hstack(arrays)
 
     return ed
 
-def unique1d(ar1, return_index=False, return_inverse=False):
+def unique(ar, return_index=False, return_inverse=False):
     """
     Find the unique elements of an array.
 
+    Returns the sorted unique elements of an array. There are two optional
+    outputs in addition to the unique elements: the indices of the input array
+    that give the unique values, and the indices of the unique array that
+    reconstruct the input array.
+
     Parameters
     ----------
-    ar1 : array_like
-        This array will be flattened if it is not already 1-D.
+    ar : array_like
+        Input array. This will be flattened if it is not already 1-D.
     return_index : bool, optional
-        If True, also return the indices against `ar1` that result in the
-        unique array.
+        If True, also return the indices of `ar` that result in the unique
+        array.
     return_inverse : bool, optional
-        If True, also return the indices against the unique array that
-        result in `ar1`.
+        If True, also return the indices of the unique array that can be used
+        to reconstruct `ar`.
 
     Returns
     -------
     unique : ndarray
-        The unique values.
+        The sorted unique values.
     unique_indices : ndarray, optional
-        The indices of the unique values. Only provided if `return_index` is
-        True.
+        The indices of the unique values in the (flattened) original array.
+        Only provided if `return_index` is True.
     unique_inverse : ndarray, optional
-        The indices to reconstruct the original array. Only provided if
-        `return_inverse` is True.
+        The indices to reconstruct the (flattened) original array from the
+        unique array. Only provided if `return_inverse` is True.
 
     See Also
     --------
-    numpy.lib.arraysetops : Module with a number of other functions
-                            for performing set operations on arrays.
+    numpy.lib.arraysetops : Module with a number of other functions for
+                            performing set operations on arrays.
 
     Examples
     --------
-    >>> np.unique1d([1, 1, 2, 2, 3, 3])
+    >>> np.unique([1, 1, 2, 2, 3, 3])
     array([1, 2, 3])
     >>> a = np.array([[1, 1], [2, 3]])
-    >>> np.unique1d(a)
+    >>> np.unique(a)
     array([1, 2, 3])
 
-    Reconstruct the input from unique values:
+    Return the indices of the original array that give the unique values:
 
-    >>> np.unique1d([1,2,6,4,2,3,2], return_index=True)
-    >>> x = [1,2,6,4,2,3,2]
-    >>> u, i = np.unique1d(x, return_inverse=True)
+    >>> a = np.array(['a', 'b', 'b', 'c', 'a'])
+    >>> u, indices = np.unique(a, return_index=True)
+    >>> u
+    array(['a', 'b', 'c'],
+           dtype='|S1')
+    >>> indices
+    array([0, 1, 3])
+    >>> a[indices]
+    array(['a', 'b', 'c'],
+           dtype='|S1')
+
+    Reconstruct the input array from the unique values:
+
+    >>> a = np.array([1, 2, 6, 4, 2, 3, 2])
+    >>> u, indices = np.unique(a, return_inverse=True)
     >>> u
     array([1, 2, 3, 4, 6])
-    >>> i
+    >>> indices
     array([0, 1, 4, 3, 1, 2, 1])
-    >>> [u[p] for p in i]
-    [1, 2, 6, 4, 2, 3, 2]
+    >>> u[indices]
+    array([1, 2, 6, 4, 2, 3, 2])
 
+    """
+    try:
+        ar = ar.flatten()
+    except AttributeError:
+        if not return_inverse and not return_index:
+            items = sorted(set(ar))
+            return np.asarray(items)
+        else:
+            ar = np.asanyarray(ar).flatten()
+
+    if ar.size == 0:
+        if return_inverse and return_index:
+            return ar, np.empty(0, np.bool), np.empty(0, np.bool)
+        elif return_inverse or return_index:
+            return ar, np.empty(0, np.bool)
+        else:
+            return ar
+
+    if return_inverse or return_index:
+        perm = ar.argsort()
+        aux = ar[perm]
+        flag = np.concatenate(([True], aux[1:] != aux[:-1]))
+        if return_inverse:
+            iflag = np.cumsum(flag) - 1
+            iperm = perm.argsort()
+            if return_index:
+                return aux[flag], perm[flag], iflag[iperm]
+            else:
+                return aux[flag], iflag[iperm]
+        else:
+            return aux[flag], perm[flag]
+
+    else:
+        ar.sort()
+        flag = np.concatenate(([True], ar[1:] != ar[:-1]))
+        return ar[flag]
+
+
+def intersect1d(ar1, ar2, assume_unique=False):
+    """
+    Find the intersection of two arrays.
+
+    Return the sorted, unique values that are in both of the input arrays.
+
+    Parameters
+    ----------
+    ar1, ar2 : array_like
+        Input arrays.
+    assume_unique : bool
+        If True, the input arrays are both assumed to be unique, which
+        can speed up the calculation.  Default is False.
+
+    Returns
+    -------
+    out : ndarray
+        Sorted 1D array of common and unique elements.
+
+    See Also
+    --------
+    numpy.lib.arraysetops : Module with a number of other functions for
+                            performing set operations on arrays.
+
+    Examples
+    --------
+    >>> np.intersect1d([1, 3, 4, 3], [3, 1, 2, 1])
+    array([1, 3])
+
+    """
+    if not assume_unique:
+        # Might be faster than unique( intersect1d( ar1, ar2 ) )?
+        ar1 = unique(ar1)
+        ar2 = unique(ar2)
+    aux = np.concatenate( (ar1, ar2) )
+    aux.sort()
+    return aux[aux[1:] == aux[:-1]]
+
+def setxor1d(ar1, ar2, assume_unique=False):
+    """
+    Find the set exclusive-or of two arrays.
+
+    Return the sorted, unique values that are in only one (not both) of the
+    input arrays.
+
+    Parameters
+    ----------
+    ar1, ar2 : array_like
+        Input arrays.
+    assume_unique : bool
+        If True, the input arrays are both assumed to be unique, which
+        can speed up the calculation.  Default is False.
+
+    Returns
+    -------
+    xor : ndarray
+        Sorted 1D array of unique values that are in only one of the input
+        arrays.
+
+    Examples
+    --------
+    >>> a = np.array([1, 2, 3, 2, 4])
+    >>> b = np.array([2, 3, 5, 7, 5])
+    >>> np.setxor1d(a,b)
+    array([1, 4, 5, 7])
+
+    """
+    if not assume_unique:
+        ar1 = unique(ar1)
+        ar2 = unique(ar2)
+
+    aux = np.concatenate( (ar1, ar2) )
+    if aux.size == 0:
+        return aux
+
+    aux.sort()
+#    flag = ediff1d( aux, to_end = 1, to_begin = 1 ) == 0
+    flag = np.concatenate( ([True], aux[1:] != aux[:-1], [True] ) )
+#    flag2 = ediff1d( flag ) == 0
+    flag2 = flag[1:] == flag[:-1]
+    return aux[flag2]
+
+def in1d(ar1, ar2, assume_unique=False):
+    """
+    Test whether each element of a 1D array is also present in a second array.
+
+    Returns a boolean array the same length as `ar1` that is True
+    where an element of `ar1` is in `ar2` and False otherwise.
+
+    Parameters
+    ----------
+    ar1 : array_like, shape (M,)
+        Input array.
+    ar2 : array_like
+        The values against which to test each value of `ar1`.
+    assume_unique : bool, optional
+        If True, the input arrays are both assumed to be unique, which
+        can speed up the calculation.  Default is False.
+
+    Returns
+    -------
+    mask : ndarray of bools, shape(M,)
+        The values `ar1[mask]` are in `ar2`.
+
+    See Also
+    --------
+    numpy.lib.arraysetops : Module with a number of other functions for
+                            performing set operations on arrays.
+
+    Notes
+    -----
+    `in1d` can be considered as an element-wise function version of the
+    python keyword `in`, for 1D sequences. ``in1d(a, b)`` is roughly
+    equivalent to ``np.array([item in b for item in a])``.
+
+    .. versionadded:: 1.4.0
+
+    Examples
+    --------
+    >>> test = np.array([0, 1, 2, 5, 0])
+    >>> states = [0, 2]
+    >>> mask = np.in1d(test, states)
+    >>> mask
+    array([ True, False,  True, False,  True], dtype=bool)
+    >>> test[mask]
+    array([0, 2, 0])
+
+    """
+    if not assume_unique:
+        ar1, rev_idx = np.unique(ar1, return_inverse=True)
+        ar2 = np.unique(ar2)
+
+    ar = np.concatenate( (ar1, ar2) )
+    # We need this to be a stable sort, so always use 'mergesort'
+    # here. The values from the first array should always come before
+    # the values from the second array.
+    order = ar.argsort(kind='mergesort')
+    sar = ar[order]
+    equal_adj = (sar[1:] == sar[:-1])
+    flag = np.concatenate( (equal_adj, [False] ) )
+    indx = order.argsort(kind='mergesort')[:len( ar1 )]
+
+    if assume_unique:
+        return flag[indx]
+    else:
+        return flag[indx][rev_idx]
+
+def union1d(ar1, ar2):
+    """
+    Find the union of two arrays.
+
+    Return the unique, sorted array of values that are in either of the two
+    input arrays.
+
+    Parameters
+    ----------
+    ar1, ar2 : array_like
+        Input arrays. They are flattened if they are not already 1D.
+
+    Returns
+    -------
+    union : ndarray
+        Unique, sorted union of the input arrays.
+
+    See Also
+    --------
+    numpy.lib.arraysetops : Module with a number of other functions for
+                            performing set operations on arrays.
+
+    Examples
+    --------
+    >>> np.union1d([-1, 0, 1], [-2, 0, 2])
+    array([-2, -1,  0,  1,  2])
+
+    """
+    return unique( np.concatenate( (ar1, ar2) ) )
+
+def setdiff1d(ar1, ar2, assume_unique=False):
+    """
+    Find the set difference of two arrays.
+
+    Return the sorted, unique values in `ar1` that are not in `ar2`.
+
+    Parameters
+    ----------
+    ar1 : array_like
+        Input array.
+    ar2 : array_like
+        Input comparison array.
+    assume_unique : bool
+        If True, the input arrays are both assumed to be unique, which
+        can speed up the calculation.  Default is False.
+
+    Returns
+    -------
+    difference : ndarray
+        Sorted 1D array of values in `ar1` that are not in `ar2`.
+
+    See Also
+    --------
+    numpy.lib.arraysetops : Module with a number of other functions for
+                            performing set operations on arrays.
+
+    Examples
+    --------
+    >>> a = np.array([1, 2, 3, 2, 4, 1])
+    >>> b = np.array([3, 4, 5, 6])
+    >>> np.setdiff1d(a, b)
+    array([1, 2])
+
+    """
+    if not assume_unique:
+        ar1 = unique(ar1)
+        ar2 = unique(ar2)
+    aux = in1d(ar1, ar2, assume_unique=True)
+    if aux.size == 0:
+        return aux
+    else:
+        return np.asarray(ar1)[aux == 0]
+
+@deprecate
+def unique1d(ar1, return_index=False, return_inverse=False):
+    """
+    This function is deprecated. Use unique() instead.
     """
     if return_index:
         import warnings
@@ -165,220 +458,31 @@ def unique1d(ar1, return_index=False, return_inverse=False):
         flag = np.concatenate(([True], ar[1:] != ar[:-1]))
         return ar[flag]
 
-def intersect1d(ar1, ar2):
-    """
-    Intersection returning repeated or unique elements common to both arrays.
-
-    Parameters
-    ----------
-    ar1,ar2 : array_like
-        Input arrays.
-
-    Returns
-    -------
-    out : ndarray, shape(N,)
-        Sorted 1D array of common elements with repeating elements.
-
-    See Also
-    --------
-    intersect1d_nu : Returns only unique common elements.
-    numpy.lib.arraysetops : Module with a number of other functions for
-                            performing set operations on arrays.
-
-    Examples
-    --------
-    >>> np.intersect1d([1,3,3],[3,1,1])
-    array([1, 1, 3, 3])
-
-    """
-    aux = np.concatenate((ar1,ar2))
-    aux.sort()
-    return aux[aux[1:] == aux[:-1]]
-
+@deprecate
 def intersect1d_nu(ar1, ar2):
     """
-    Intersection returning unique elements common to both arrays.
-
-    Parameters
-    ----------
-    ar1,ar2 : array_like
-        Input arrays.
-
-    Returns
-    -------
-    out : ndarray, shape(N,)
-        Sorted 1D array of common and unique elements.
-
-    See Also
-    --------
-    intersect1d : Returns repeated or unique common elements.
-    numpy.lib.arraysetops : Module with a number of other functions for
-                            performing set operations on arrays.
-
-    Examples
-    --------
-    >>> np.intersect1d_nu([1,3,3],[3,1,1])
-    array([1, 3])
-
+    This function is deprecated.  Use intersect1d()
+    instead.
     """
     # Might be faster than unique1d( intersect1d( ar1, ar2 ) )?
     aux = np.concatenate((unique1d(ar1), unique1d(ar2)))
     aux.sort()
     return aux[aux[1:] == aux[:-1]]
 
-def setxor1d(ar1, ar2):
-    """
-    Set exclusive-or of 1D arrays with unique elements.
-
-    Use unique1d() to generate arrays with only unique elements to use as
-    inputs to this function.
-
-    Parameters
-    ----------
-    ar1 : array_like
-        Input array.
-    ar2 : array_like
-        Input array.
-
-    Returns
-    -------
-    xor : ndarray
-        The values that are only in one, but not both, of the input arrays.
-
-    See Also
-    --------
-    numpy.lib.arraysetops : Module with a number of other functions for
-                            performing set operations on arrays.
-
-    """
-    aux = np.concatenate((ar1, ar2))
-    if aux.size == 0:
-        return aux
-
-    aux.sort()
-#    flag = ediff1d( aux, to_end = 1, to_begin = 1 ) == 0
-    flag = np.concatenate( ([True], aux[1:] != aux[:-1], [True] ) )
-#    flag2 = ediff1d( flag ) == 0
-    flag2 = flag[1:] == flag[:-1]
-    return aux[flag2]
-
+@deprecate
 def setmember1d(ar1, ar2):
     """
-    Return a boolean array set True where first element is in second array.
-
-    Boolean array is the shape of `ar1` containing True where the elements
-    of `ar1` are in `ar2` and False otherwise.
-
-    Use unique1d() to generate arrays with only unique elements to use as
-    inputs to this function.
-
-    Parameters
-    ----------
-    ar1 : array_like
-        Input array.
-    ar2 : array_like
-        Input array.
-
-    Returns
-    -------
-    mask : ndarray, bool
-        The values `ar1[mask]` are in `ar2`.
-
-
-    See Also
-    --------
-    numpy.lib.arraysetops : Module with a number of other functions for
-                            performing set operations on arrays.
-
-    Examples
-    --------
-    >>> test = np.arange(5)
-    >>> states = [0, 2]
-    >>> mask = np.setmember1d(test,states)
-    >>> mask
-    array([ True, False,  True, False, False], dtype=bool)
-    >>> test[mask]
-    array([0, 2])
-
+    This function is deprecated.  Use in1d(assume_unique=True)
+    instead.
     """
-    ar1 = np.asarray( ar1 )
-    ar2 = np.asarray( ar2 )
-    ar = np.concatenate( (ar1, ar2 ) )
-    b1 = np.zeros( ar1.shape, dtype = np.int8 )
-    b2 = np.ones( ar2.shape, dtype = np.int8 )
-    tt = np.concatenate( (b1, b2) )
-
     # We need this to be a stable sort, so always use 'mergesort' here. The
     # values from the first array should always come before the values from the
     # second array.
-    perm = ar.argsort(kind='mergesort')
-    aux = ar[perm]
-    aux2 = tt[perm]
-#    flag = ediff1d( aux, 1 ) == 0
-    flag = np.concatenate( (aux[1:] == aux[:-1], [False] ) )
-    ii = np.where( flag * aux2 )[0]
-    aux = perm[ii+1]
-    perm[ii+1] = perm[ii]
-    perm[ii] = aux
+    ar = np.concatenate( (ar1, ar2 ) )
+    order = ar.argsort(kind='mergesort')
+    sar = ar[order]
+    equal_adj = (sar[1:] == sar[:-1])
+    flag = np.concatenate( (equal_adj, [False] ) )
 
-    indx = perm.argsort(kind='mergesort')[:len( ar1 )]
-
+    indx = order.argsort(kind='mergesort')[:len( ar1 )]
     return flag[indx]
-
-def union1d(ar1, ar2):
-    """
-    Union of 1D arrays with unique elements.
-
-    Use unique1d() to generate arrays with only unique elements to use as
-    inputs to this function.
-
-    Parameters
-    ----------
-    ar1 : array_like, shape(M,)
-        Input array.
-    ar2 : array_like, shape(N,)
-        Input array.
-
-    Returns
-    -------
-    union : ndarray
-        Unique union of input arrays.
-
-    See also
-    --------
-    numpy.lib.arraysetops : Module with a number of other functions for
-                            performing set operations on arrays.
-
-    """
-    return unique1d( np.concatenate( (ar1, ar2) ) )
-
-def setdiff1d(ar1, ar2):
-    """
-    Set difference of 1D arrays with unique elements.
-
-    Use unique1d() to generate arrays with only unique elements to use as
-    inputs to this function.
-
-    Parameters
-    ----------
-    ar1 : array_like
-        Input array.
-    ar2 : array_like
-        Input comparison array.
-
-    Returns
-    -------
-    difference : ndarray
-        The values in ar1 that are not in ar2.
-
-    See Also
-    --------
-    numpy.lib.arraysetops : Module with a number of other functions for
-                            performing set operations on arrays.
-
-    """
-    aux = setmember1d(ar1,ar2)
-    if aux.size == 0:
-        return aux
-    else:
-        return np.asarray(ar1)[aux == 0]

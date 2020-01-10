@@ -8,7 +8,12 @@
  *              NPY_CPU_SPARC
  *              NPY_CPU_S390
  *              NPY_CPU_IA64
- *              NPY_CPU_PARISC
+ *              NPY_CPU_HPPA
+ *              NPY_CPU_ALPHA
+ *              NPY_CPU_ARMEL
+ *              NPY_CPU_ARMEB
+ *              NPY_CPU_SH_LE
+ *              NPY_CPU_SH_BE
  */
 #ifndef _NPY_CPUARCH_H_
 #define _NPY_CPUARCH_H_
@@ -42,12 +47,55 @@
     #define NPY_CPU_S390
 #elif defined(__ia64)
     #define NPY_CPU_IA64
-#elif defined(__parisc__)
-    /* XXX: Not sure about this one... */
-    #define NPY_CPU_PARISC
+#elif defined(__hppa)
+    #define NPY_CPU_HPPA
+#elif defined(__alpha__)
+    #define NPY_CPU_ALPHA
+#elif defined(__arm__) && defined(__ARMEL__)
+    #define NPY_CPU_ARMEL
+#elif defined(__arm__) && defined(__ARMEB__)
+    #define NPY_CPU_ARMEB
+#elif defined(__sh__) && defined(__LITTLE_ENDIAN__)
+    #define NPY_CPU_SH_LE
+#elif defined(__sh__) && defined(__BIG_ENDIAN__)
+    #define NPY_CPU_SH_BE
+#elif defined(__MIPSEL__)
+    #define NPY_CPU_MIPSEL
+#elif defined(__MIPSEB__)
+    #define NPY_CPU_MIPSEB
 #else
     #error Unknown CPU, please report this to numpy maintainers with \
     information about your platform (OS, CPU and compiler)
+#endif
+
+/*
+   This "white-lists" the architectures that we know don't require
+   pointer alignment.  We white-list, since the memcpy version will
+   work everywhere, whereas assignment will only work where pointer
+   dereferencing doesn't require alignment.
+
+   TODO: There may be more architectures we can white list.
+*/
+#if defined(NPY_CPU_X86) || defined(NPY_CPU_AMD64)
+    #define NPY_COPY_PYOBJECT_PTR(dst, src) (*((PyObject **)(dst)) = *((PyObject **)(src)))
+#else
+    #if NPY_SIZEOF_PY_INTPTR_T == 4
+        #define NPY_COPY_PYOBJECT_PTR(dst, src) \
+            ((char*)(dst))[0] = ((char*)(src))[0]; \
+            ((char*)(dst))[1] = ((char*)(src))[1]; \
+            ((char*)(dst))[2] = ((char*)(src))[2]; \
+            ((char*)(dst))[3] = ((char*)(src))[3];
+    #elif NPY_SIZEOF_PY_INTPTR_T == 8
+        #define NPY_COPY_PYOBJECT_PTR(dst, src) \
+            ((char*)(dst))[0] = ((char*)(src))[0]; \
+            ((char*)(dst))[1] = ((char*)(src))[1]; \
+            ((char*)(dst))[2] = ((char*)(src))[2]; \
+            ((char*)(dst))[3] = ((char*)(src))[3]; \
+            ((char*)(dst))[4] = ((char*)(src))[4]; \
+            ((char*)(dst))[5] = ((char*)(src))[5]; \
+            ((char*)(dst))[6] = ((char*)(src))[6]; \
+            ((char*)(dst))[7] = ((char*)(src))[7];
+    #endif
 #endif
 
 #endif

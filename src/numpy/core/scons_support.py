@@ -1,4 +1,4 @@
-#! Last Change: Fri Mar 13 01:00 PM 2009 J
+#! Last Change: Sun Apr 26 05:00 PM 2009 J
 
 """Code to support special facilities to scons which are only useful for
 numpy.core, hence not put into numpy.distutils.scons"""
@@ -9,10 +9,14 @@ import os
 from os.path import join as pjoin, dirname as pdirname, basename as pbasename
 from copy import deepcopy
 
+import code_generators
 from code_generators.generate_numpy_api import \
      do_generate_api as nowrap_do_generate_numpy_api
 from code_generators.generate_ufunc_api import \
      do_generate_api as nowrap_do_generate_ufunc_api
+from setup_common import check_api_version as _check_api_version
+from setup_common import \
+        LONG_DOUBLE_REPRESENTATION_SRC, pyod, long_double_representation
 
 from numscons.numdist import process_c_str as process_str
 
@@ -20,6 +24,9 @@ import SCons.Node
 import SCons
 from SCons.Builder import Builder
 from SCons.Action import Action
+
+def check_api_version(apiversion):
+    return _check_api_version(apiversion, pdirname(code_generators.__file__))
 
 def split_ext(string):
     sp = string.rsplit( '.', 1)
@@ -32,12 +39,12 @@ def split_ext(string):
 #------------------------------------
 def do_generate_numpy_api(target, source, env):
     nowrap_do_generate_numpy_api([str(i) for i in target],
-                                 [str(i) for i in source])
+                                 [s.value for s in source])
     return 0
 
 def do_generate_ufunc_api(target, source, env):
     nowrap_do_generate_ufunc_api([str(i) for i in target],
-                                 [str(i) for i in source])
+                                 [s.value for s in source])
     return 0
 
 def generate_api_emitter(target, source, env):
@@ -97,6 +104,26 @@ def generate_umath_emitter(target, source, env):
 #-----------------------------------------
 # Other functions related to configuration
 #-----------------------------------------
+def CheckGCC4(context):
+    src = """
+int
+main()
+{
+#if !(defined __GNUC__ && (__GNUC__ >= 4))
+die from an horrible death
+#endif
+}
+"""
+
+    context.Message("Checking if compiled with gcc 4.x or above ... ")
+    st = context.TryCompile(src, '.c')
+
+    if st:
+        context.Result(' yes')
+    else:
+        context.Result(' no')
+    return st == 1
+
 def CheckBrokenMathlib(context, mathlib):
     src = """
 /* check whether libm is broken */
@@ -210,7 +237,28 @@ static %(inline)s int static_func (void)
         context.Result(0)
     return inline
 
-array_api_gen_bld = Builder(action = Action(do_generate_numpy_api, '$ARRAPIGENCOMSTR'),
+def CheckLongDoubleRepresentation(context):
+    msg = {
+        'INTEL_EXTENDED_12_BYTES_LE': "Intel extended, little endian",
+        'INTEL_EXTENDED_16_BYTES_LE': "Intel extended, little endian",
+        'IEEE_QUAD_BE': "IEEE Quad precision, big endian",
+        'IEEE_QUAD_LE': "IEEE Quad precision, little endian",
+        'IEEE_DOUBLE_LE': "IEEE Double precision, little endian",
+        'IEEE_DOUBLE_BE': "IEEE Double precision, big endian"
+    }
+
+    context.Message("Checking for long double representation... ")
+    body = LONG_DOUBLE_REPRESENTATION_SRC % {'type': 'long double'}
+    st = context.TryCompile(body, '.c')
+    if st:
+        obj = str(context.sconf.lastTarget)
+        tp = long_double_representation(pyod(obj))
+        context.Result(msg[tp])
+        return tp
+    if not st:
+        context.Result(0)
+
+array_api_gen_bld = Builder(action = Action(do_generate_numpy_api, '$ARRAYPIGENCOMSTR'),
                             emitter = generate_api_emitter)
 
 

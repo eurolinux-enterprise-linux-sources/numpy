@@ -36,8 +36,6 @@ the functions are written by numerous contributors and developers of
 Numpy, both prior to and during the
 `Numpy Documentation Marathon <http://scipy.org/Developer_Zone/DocMarathon2008>`__.
 
-The Documentation Marathon is still ongoing. Please help us write
-better documentation for Numpy by joining it! Instructions on how to
-join and what to do can be found
+Please help to improve NumPy's documentation! Instructions on how to
+join the ongoing documentation marathon can be found
 `on the scipy.org website <http://scipy.org/Developer_Zone/DocMarathon2008>`__
-

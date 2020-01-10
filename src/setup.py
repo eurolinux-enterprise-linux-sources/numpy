@@ -49,28 +49,43 @@ AUTHOR              = "Travis E. Oliphant, et.al."
 AUTHOR_EMAIL        = "oliphant@enthought.com"
 PLATFORMS           = ["Windows", "Linux", "Solaris", "Mac OS-X", "Unix"]
 MAJOR               = 1
-MINOR               = 3
-MICRO               = 0
+MINOR               = 4
+MICRO               = 1
 ISRELEASED          = True
 VERSION             = '%d.%d.%d' % (MAJOR, MINOR, MICRO)
-    
+
 # Return the svn version as a string, raise a ValueError otherwise
 def svn_version():
+    def _minimal_ext_cmd(cmd):
+        # construct minimal environment
+        env = {}
+        for k in ['SYSTEMROOT', 'PATH']:
+            v = os.environ.get(k)
+            if v is not None:
+                env[k] = v
+        # LANGUAGE is used on win32
+        env['LANGUAGE'] = 'C'
+        env['LANG'] = 'C'
+        env['LC_ALL'] = 'C'
+        out = subprocess.Popen(cmd, stdout = subprocess.PIPE, env=env).communicate()[0]
+        return out
+
     try:
-        out = subprocess.Popen(['svn', 'info'], stdout = subprocess.PIPE).communicate()[0]
+        out = _minimal_ext_cmd(['svn', 'info'])
     except OSError:
-        print " --- Could not run svn info --- "
+        print(" --- Could not run svn info --- ")
         return ""
 
     r = re.compile('Revision: ([0-9]+)')
-    svnver = None
+    svnver = ""
     for line in out.split('\n'):
-        m = r.match(line)
+        m = r.match(line.strip())
         if m:
             svnver = m.group(1)
 
     if not svnver:
-        raise ValueError("Error while parsing svn version ?")
+        print("Error while parsing svn version")
+
     return svnver
 
 # BEFORE importing distutils, remove MANIFEST. distutils doesn't properly

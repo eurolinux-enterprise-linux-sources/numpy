@@ -56,11 +56,18 @@ from docutils.parsers.rst import directives
 from docutils.statemachine import ViewList
 from docutils import nodes
 
-import sphinx.addnodes, sphinx.roles, sphinx.builder
+import sphinx.addnodes, sphinx.roles
 from sphinx.util import patfilter
 
 from docscrape_sphinx import get_doc_object
 
+import warnings
+warnings.warn(
+    "The numpydoc.autosummary extension can also be found as "
+    "sphinx.ext.autosummary in Sphinx >= 0.6, and the version in "
+    "Sphinx >= 0.7 is superior to the one in numpydoc. This numpydoc "
+    "version of autosummary is no longer maintained.",
+    DeprecationWarning, stacklevel=2)
 
 def setup(app):
     app.add_directive('autosummary', autosummary_directive, True, (0, 0, False),
@@ -161,6 +168,7 @@ def autosummary_directive(dirname, arguments, options, content, lineno,
         tocnode['includefiles'] = docnames
         tocnode['maxdepth'] = -1
         tocnode['glob'] = None
+        tocnode['entries'] = [(None, docname) for docname in docnames]
 
         tocnode = autosummary_toc('', '', tocnode)
         return warnings + [node] + [tocnode]
@@ -202,6 +210,11 @@ def get_autosummary(names, state, no_signatures=False):
             vl = ViewList()
             vl.append(text, '<autosummary>')
             state.nested_parse(vl, 0, node)
+            try:
+                if isinstance(node[0], nodes.paragraph):
+                    node = node[0]
+            except IndexError:
+                pass
             row.append(nodes.entry('', node))
         body.append(row)
 

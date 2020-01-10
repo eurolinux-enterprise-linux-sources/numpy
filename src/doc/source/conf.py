@@ -1,17 +1,11 @@
 # -*- coding: utf-8 -*-
 
-import sys, os
-
-# If your extensions are in another directory, add it here. If the directory
-# is relative to the documentation root, use os.path.abspath to make it
-# absolute, like shown here.
-sys.path.append(os.path.abspath('../sphinxext'))
+import sys, os, re
 
 # Check Sphinx version
 import sphinx
 if sphinx.__version__ < "0.5":
     raise RuntimeError("Sphinx 0.5.dev or newer required")
-
 
 # -----------------------------------------------------------------------------
 # General configuration
@@ -19,9 +13,19 @@ if sphinx.__version__ < "0.5":
 
 # Add any Sphinx extension module names here, as strings. They can be extensions
 # coming with Sphinx (named 'sphinx.ext.*') or your custom ones.
+
+sys.path.insert(0, os.path.abspath('../sphinxext'))
+
 extensions = ['sphinx.ext.autodoc', 'sphinx.ext.pngmath', 'numpydoc',
-              'phantom_import', 'autosummary', 'sphinx.ext.intersphinx',
-              'sphinx.ext.coverage', 'only_directives']
+              'sphinx.ext.intersphinx', 'sphinx.ext.coverage',
+              'sphinx.ext.doctest',
+              'plot_directive']
+
+if sphinx.__version__ >= "0.7":
+    extensions.append('sphinx.ext.autosummary')
+else:
+    extensions.append('autosummary')
+    extensions.append('only_directives')
 
 # Add any paths that contain templates here, relative to this directory.
 templates_path = ['_templates']
@@ -39,11 +43,12 @@ copyright = '2008-2009, The Scipy community'
 # The default replacements for |version| and |release|, also used in various
 # other places throughout the built documents.
 #
-import numpy.version
-# The short X.Y version.
-version = numpy.version.short_version
+import numpy
+# The short X.Y version (including .devXXXX, rcX, b1 suffixes if present)
+version = re.sub(r'(\d+\.\d+)\.\d+(.*)', r'\1\2', numpy.__version__)
+version = re.sub(r'(\.dev\d+).*?$', r'\1', version)
 # The full version, including alpha/beta/rc tags.
-release = numpy.version.version
+release = numpy.__version__
 print version, release
 
 # There are two options for replacing |today|: either, you set today to some
@@ -170,6 +175,7 @@ latex_documents = [
 # Additional stuff for the LaTeX preamble.
 latex_preamble = r'''
 \usepackage{amsmath}
+\DeclareUnicodeCharacter{00A0}{\nobreakspace}
 
 % In the parameters section, place a newline after the Parameters
 % header
@@ -209,6 +215,17 @@ intersphinx_mapping = {'http://docs.python.org/dev': None}
 # If we want to do a phantom import from an XML file for all autodocs
 phantom_import_file = 'dump.xml'
 
+# Make numpydoc to generate plots for example sections
+numpydoc_use_plots = True
+
+# -----------------------------------------------------------------------------
+# Autosummary
+# -----------------------------------------------------------------------------
+
+if sphinx.__version__ >= "0.7": 
+    import glob
+    autosummary_generate = glob.glob("reference/*.rst")
+
 # -----------------------------------------------------------------------------
 # Coverage checker
 # -----------------------------------------------------------------------------
@@ -226,3 +243,32 @@ coverage_c_regexes = {}
 coverage_ignore_c_items = {}
 
 
+# -----------------------------------------------------------------------------
+# Plots
+# -----------------------------------------------------------------------------
+plot_pre_code = """
+import numpy as np
+np.random.seed(0)
+"""
+plot_include_source = True
+plot_formats = [('png', 100), 'pdf']
+
+import math
+phi = (math.sqrt(5) + 1)/2
+
+import matplotlib
+matplotlib.rcParams.update({
+    'font.size': 8,
+    'axes.titlesize': 8,
+    'axes.labelsize': 8,
+    'xtick.labelsize': 8,
+    'ytick.labelsize': 8,
+    'legend.fontsize': 8,
+    'figure.figsize': (3*phi, 3),
+    'figure.subplot.bottom': 0.2,
+    'figure.subplot.left': 0.2,
+    'figure.subplot.right': 0.9,
+    'figure.subplot.top': 0.85,
+    'figure.subplot.wspace': 0.4,
+    'text.usetex': False,
+})

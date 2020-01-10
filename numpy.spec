@@ -3,8 +3,8 @@
 %{!?python_version: %define python_version %(%{__python} -c 'import sys; print sys.version.split(" ")[0]' || echo "2.3")}
 
 Name:           numpy
-Version:        1.3.0
-Release:        6.2%{?dist}
+Version:        1.4.1
+Release:        9%{?dist}
 Summary:        A fast multidimensional array facility for Python
 
 Group:          Development/Languages
@@ -12,10 +12,16 @@ License:        BSD
 URL:            http://numeric.scipy.org/
 Source0:        http://downloads.sourceforge.net/numpy/%{name}-%{version}.tar.gz
 Patch0:         numpy-1.0.1-f2py.patch
+Patch1:         numpy_doublefree.patch
+Patch2:         numpy-fix_endianness_detection.patch
+Patch3:         numpy-BUG-look-for-endian.h.patch
+Patch4:         numpy-BUG-quick-and-ugly-fix-for-long-double-on-linux-ppc.patch
+Patch5:         numpy-ENH-fix-long-double-detection-for-linux-ppc.patch
+
 BuildRoot:      %{_tmppath}/%{name}-%{version}-%{release}-root-%(%{__id_u} -n)
 
 BuildRequires:  python-devel lapack-devel python-setuptools gcc-gfortran atlas-devel python-nose
-Requires:	python-nose
+Requires:	    python-nose
 
 %description
 NumPy is a general-purpose array-processing package designed to
@@ -43,6 +49,31 @@ This package includes a version of f2py that works properly with NumPy.
 %prep
 %setup -q -n %{name}-%{version}
 %patch0 -p1 -b .f2py
+%patch1 -p0
+%patch2 -p1
+%patch3 -p1
+%patch4 -p1
+%patch5 -p1
+
+# just to be sure users can still import these directly
+# shouldn't be needed, but better be safe
+ln -s ../core/getlimits.py numpy/lib/getlimits.py
+# make imports absolute to workaround
+sed -i 's:from machar :from numpy.core.machar :;
+       s:import numeric$:from numpy.core import numeric:;
+       s:import numerictypes:from numpy.core import numerictypes:;
+       s:from numeric import array:from numpy.core.numeric import array:' \
+    numpy/core/getlimits.py
+
+ln -s ../core/machar.py numpy/lib/machar.py
+sed -i "s:__all__\(.*\)'emath','math':__all__\1'emath','math','getlimits','machar':" \
+    numpy/lib/__init__.py
+
+ln -s ../matrixlib/defmatrix.py numpy/core/defmatrix.py
+sed -i "s:__all__\(.*\)'char','rec','memmap':__all__\1'char','rec','memmap','defmatrix':" \
+    numpy/core/__init__.py
+
+
 
 %build
 env ATLAS=%{_libdir} FFTW=%{_libdir} BLAS=%{_libdir} \
@@ -58,12 +89,16 @@ env ATLAS=%{_libdir} FFTW=%{_libdir} BLAS=%{_libdir} \
     %{__python} setup.py install --root $RPM_BUILD_ROOT
 rm -rf docs-f2py ; mv $RPM_BUILD_ROOT%{python_sitearch}/%{name}/f2py/docs docs-f2py
 mv -f $RPM_BUILD_ROOT%{python_sitearch}/%{name}/f2py/f2py.1 f2py.1
-rm -rf doc ; mv -f $RPM_BUILD_ROOT%{python_sitearch}/%{name}/doc .
 install -D -p -m 0644 f2py.1 $RPM_BUILD_ROOT%{_mandir}/man1/f2py.1
+
 pushd $RPM_BUILD_ROOT%{_bindir} &> /dev/null
 # symlink for anyone who was using f2py.numpy
 ln -s f2py f2py.numpy
 popd &> /dev/null
+
+#symlink for includes, BZ 185079
+mkdir -p $RPM_BUILD_ROOT/usr/include
+ln -s %{python_sitearch}/%{name}/core/include/numpy/ $RPM_BUILD_ROOT/usr/include/numpy
 
 # Remove doc files. They should in in %doc
 rm -f $RPM_BUILD_ROOT%{python_sitearch}/%{name}/COMPATIBILITY
@@ -76,7 +111,11 @@ rm -f $RPM_BUILD_ROOT%{python_sitearch}/%{name}/site.cfg.example
 
 %check
 pushd doc &> /dev/null
-PYTHONPATH="%{buildroot}%{python_sitearch}" %{__python} -c "import pkg_resources, numpy ; numpy.test()"
+PYTHONPATH="%{buildroot}%{python_sitearch}" %{__python} -c "import pkg_resources, numpy ; numpy.test()" \
+%ifarch s390 s390x
+|| :
+%endif
+# don't remove this comment
 popd &> /dev/null
 
 %clean
@@ -84,10 +123,12 @@ rm -rf $RPM_BUILD_ROOT
 
 %files
 %defattr(-,root,root,-)
-%doc docs-f2py doc/* LICENSE.txt README.txt THANKS.txt DEV_README.txt COMPATIBILITY site.cfg.example
+%doc docs-f2py doc/release/* LICENSE.txt README.txt THANKS.txt DEV_README.txt COMPATIBILITY site.cfg.example
 %dir %{python_sitearch}/%{name}
 %{python_sitearch}/%{name}/*.py*
 %{python_sitearch}/%{name}/core
+%{python_sitearch}/%{name}/distutils
+%{python_sitearch}/%{name}/doc
 %{python_sitearch}/%{name}/fft
 %{python_sitearch}/%{name}/lib
 %{python_sitearch}/%{name}/linalg
@@ -97,25 +138,77 @@ rm -rf $RPM_BUILD_ROOT
 %{python_sitearch}/%{name}/random
 %{python_sitearch}/%{name}/testing
 %{python_sitearch}/%{name}/tests
+%{python_sitearch}/%{name}/compat
+%{python_sitearch}/%{name}/matrixlib
+%{python_sitearch}/%{name}/polynomial
 %if 0%{?fedora} >= 9 || 0%{?rhel} >= 6
 %{python_sitearch}/%{name}-*.egg-info
 %endif
+%{_includedir}/numpy
 
 %files f2py
 %defattr(-,root,root,-)
 %{_mandir}/man*/*
 %{_bindir}/f2py
 %{_bindir}/f2py.numpy
-%{python_sitearch}/%{name}/distutils
 %{python_sitearch}/%{name}/f2py
 
 
 %changelog
-* Thu May 27 2010 Stanislav Ochotnicky <sochotnicky@redhat.com> - 1.3.0-6.2
-- Added no-strict-aliasing (bz 596190)
+* Tue Apr 24 2012 Stanislav Ochotnicky <sochotnicky@redhat.com> - 1.4.1-9
+- Install documentation and release notes properly
+- Related: rhbz#692959
 
-* Fri Nov 13 2009 Dennis Gregorovic <dgregor@redhat.com> - 1.3.0-6.1
-- Fix conditional for RHEL
+* Mon Apr 23 2012 Stanislav Ochotnicky <sochotnicky@redhat.com> - 1.4.1-8
+- Provide backward-compatible symlinks for few modules
+- Related: rhbz#692959
+
+* Fri Apr 20 2012 Stanislav Ochotnicky <sochotnicky@redhat.com> - 1.4.1-7
+- Rebase to Fedora 14 version with patches fixing ppc support
+- Resolves rhbz#692959
+
+* Thu Jul 22 2010 David Malcolm <dmalcolm@redhat.com> - 1:1.4.1-6
+- actually add the patch this time
+
+* Thu Jul 22 2010 David Malcolm <dmalcolm@redhat.com> - 1:1.4.1-5
+- fix segfault within %check on 2.7 (patch 2)
+
+* Wed Jul 21 2010 David Malcolm <dmalcolm@redhat.com> - 1:1.4.1-4
+- Rebuilt for https://fedoraproject.org/wiki/Features/Python_2.7/MassRebuild
+
+* Sun Jul 18 2010 Dan Horák <dan[at]danny.cz> 1.4.1-3
+- ignore the "Ticket #1299 second test" failure on s390(x)
+
+* Thu Jun 24 2010 Jef Spaleta <jspaleta@fedoraprject.org> 1.4.1-2
+- source commit fix
+
+* Thu Jun 24 2010 Jef Spaleta <jspaleta@fedoraprject.org> 1.4.1-1
+- New upstream release. Include backported doublefree patch
+
+* Mon Apr 26 2010 Jon Ciesla <limb@jcomserv.net> 1.3.0-8
+- Moved distutils back to the main package, BZ 572820.
+
+* Thu Apr 08 2010 Jon Ciesla <limb@jcomserv.net> 1.3.0-7
+- Reverted to 1.3.0 after upstream pulled 1.4.0, BZ 579065.
+
+* Tue Mar 02 2010 Jon Ciesla <limb@jcomserv.net> 1.4.0-5
+- Linking /usr/include/numpy to .h files, BZ 185079.
+
+* Tue Feb 16 2010 Jon Ciesla <limb@jcomserv.net> 1.4.0-4
+- Re-enabling atlas BR, dropping lapack Requires.
+
+* Wed Feb 10 2010 Jon Ciesla <limb@jcomserv.net> 1.4.0-3
+- Since the previous didn't work, Requiring lapack.
+
+* Tue Feb 09 2010 Jon Ciesla <limb@jcomserv.net> 1.4.0-2
+- Temporarily dropping atlas BR to work around 562577.
+
+* Fri Jan 22 2010 Jon Ciesla <limb@jcomserv.net> 1.4.0-1
+- 1.4.0.
+- Dropped ARM patch, ARM support added upstream.
+
+* Tue Nov 17 2009 Jitesh Shah <jiteshs@marvell.com> - 1.3.0-6.fa1
+- Add ARM support
 
 * Sat Jul 25 2009 Fedora Release Engineering <rel-eng@lists.fedoraproject.org> - 1.3.0-6
 - Rebuilt for https://fedoraproject.org/wiki/Fedora_12_Mass_Rebuild
@@ -182,7 +275,7 @@ rm -rf $RPM_BUILD_ROOT
 - New upstream release
 
 * Tue Apr 17 2007 Jarod Wilson <jwilson@redhat.com> 1.0.1-4
-- Update gfortran patch to recognize latest gfortran f95 support 
+- Update gfortran patch to recognize latest gfortran f95 support
 - Resolves rhbz#236444
 
 * Fri Feb 23 2007 Jarod Wilson <jwilson@redhat.com> 1.0.1-3

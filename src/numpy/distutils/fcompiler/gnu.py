@@ -2,6 +2,9 @@ import re
 import os
 import sys
 import warnings
+import platform
+import tempfile
+from subprocess import Popen, PIPE, STDOUT
 
 from numpy.distutils.cpuinfo import cpu
 from numpy.distutils.fcompiler import FCompiler
@@ -12,12 +15,15 @@ compilers = ['GnuFCompiler', 'Gnu95FCompiler']
 
 TARGET_R = re.compile("Target: ([a-zA-Z0-9_\-]*)")
 
-# XXX: do we really need to check for target ? If the arch is not supported,
-# the return code should be != 0
-_R_ARCHS = {"ppc": r"^Target: (powerpc-.*)$",
-    "i686": r"^Target: (i686-.*)$",
-    "x86_64": r"^Target: (i686-.*)$",
-    "ppc64": r"^Target: (powerpc-.*)$",}
+# XXX: handle cross compilation
+def is_win64():
+    return sys.platform == "win32" and platform.architecture()[0] == "64bit"
+
+if is_win64():
+    #_EXTRAFLAGS = ["-fno-leading-underscore"]
+    _EXTRAFLAGS = []
+else:
+    _EXTRAFLAGS = []
 
 class GnuFCompiler(FCompiler):
     compiler_type = 'gnu'
@@ -220,10 +226,10 @@ class Gnu95FCompiler(GnuFCompiler):
     executables = {
         'version_cmd'  : ["<F90>", "--version"],
         'compiler_f77' : [None, "-Wall", "-ffixed-form",
-                          "-fno-second-underscore"],
-        'compiler_f90' : [None, "-Wall", "-fno-second-underscore"],
+		"-fno-second-underscore"] + _EXTRAFLAGS,
+        'compiler_f90' : [None, "-Wall", "-fno-second-underscore"] + _EXTRAFLAGS,
         'compiler_fix' : [None, "-Wall", "-ffixed-form",
-                          "-fno-second-underscore"],
+                          "-fno-second-underscore"] + _EXTRAFLAGS,
         'linker_so'    : ["<F90>", "-Wall"],
         'archiver'     : ["ar", "-cr"],
         'ranlib'       : ["ranlib"],
@@ -241,29 +247,13 @@ class Gnu95FCompiler(GnuFCompiler):
 
     g2c = 'gfortran'
 
-    # Note that this is here instead of GnuFCompiler as gcc < 4 uses a
-    # different output format (which isn't as useful) than gcc >= 4,
-    # and we don't have to worry about g77 being universal (as it can't be).
-    def _can_target(self, cmd, arch):
-        """Return true is the compiler support the -arch flag for the given
-        architecture."""
-        newcmd = cmd[:]
-        newcmd.extend(["-arch", arch, "-v"])
-        st, out = exec_command(" ".join(newcmd))
-        if st == 0:
-            for line in out.splitlines():
-                m = re.search(_R_ARCHS[arch], line)
-                if m:
-                    return True
-        return False
-            
     def _universal_flags(self, cmd):
         """Return a list of -arch flags for every supported architecture."""
         if not sys.platform == 'darwin':
             return []
         arch_flags = []
-        for arch in ["ppc", "i686"]:
-            if self._can_target(cmd, arch):
+        for arch in ["ppc", "i686", "x86_64"]:
+            if _can_target(cmd, arch):
                 arch_flags.extend(["-arch", arch])
         return arch_flags
 
@@ -307,6 +297,13 @@ class Gnu95FCompiler(GnuFCompiler):
                     i = opt.index("gcc")
                     opt.insert(i+1, "mingwex")
                     opt.insert(i+1, "mingw32")
+            # XXX: fix this mess, does not work for mingw
+            if is_win64():
+                c_compiler = self.c_compiler
+                if c_compiler and c_compiler.compiler_type == "msvc":
+                    return []
+                else:
+                    raise NotImplementedError("Only MS compiler supported with gfortran on win64")
         return opt
 
     def get_target(self):
@@ -318,6 +315,32 @@ class Gnu95FCompiler(GnuFCompiler):
             if m:
                 return m.group(1)
         return ""
+
+    def get_flags_opt(self):
+        if is_win64():
+            return ['-O0']
+        else:
+            return GnuFCompiler.get_flags_opt(self)
+
+def _can_target(cmd, arch):
+    """Return true is the command supports the -arch flag for the given
+    architecture."""
+    newcmd = cmd[:]
+    fid, filename = tempfile.mkstemp(suffix=".f")
+    try:
+        d = os.path.dirname(filename)
+        output = os.path.splitext(filename)[0] + ".o"
+        try:
+            newcmd.extend(["-arch", arch, "-c", filename])
+            p = Popen(newcmd, stderr=STDOUT, stdout=PIPE, cwd=d)
+            p.communicate()
+            return p.returncode == 0
+        finally:
+            if os.path.exists(output):
+                os.remove(output)
+    finally:
+        os.remove(filename)
+    return False
 
 if __name__ == '__main__':
     from distutils import log

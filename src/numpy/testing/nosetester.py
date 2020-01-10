@@ -1,18 +1,33 @@
-''' Nose test running
+"""
+Nose test running.
 
-Implements test and bench functions for modules.
+This module implements ``test()`` and ``bench()`` functions for NumPy modules.
 
-'''
+"""
 import os
 import sys
 
 def get_package_name(filepath):
-    # find the package name given a path name that's part of the package
+    """
+    Given a path where a package is installed, determine its name.
+
+    Parameters
+    ----------
+    filepath : str
+        Path to a file. If the determination fails, "numpy" is returned.
+
+    Examples
+    --------
+    >>> np.testing.nosetester.get_package_name('nonsense')
+    'numpy'
+
+    """
+
     fullpath = filepath[:]
     pkg_name = []
-    while 'site-packages' in filepath:
+    while 'site-packages' in filepath or 'dist-packages' in filepath:
         filepath, p2 = os.path.split(filepath)
-        if p2 == 'site-packages':
+        if p2 in ('site-packages', 'dist-packages'):
             break
         pkg_name.append(p2)
 
@@ -25,6 +40,11 @@ def get_package_name(filepath):
 
     # otherwise, reverse to get correct order and return
     pkg_name.reverse()
+
+    # don't include the outer egg directory
+    if pkg_name[0].endswith('.egg'):
+        pkg_name.pop(0)
+
     return '.'.join(pkg_name)
 
 def import_nose():
@@ -87,21 +107,31 @@ def _docmethod(meth, testtype):
 
 
 class NoseTester(object):
-    """ Nose test runner.
-
-    Usage: NoseTester(<package>).test()
-
-    <package> is package path or module Default for package is None. A
-    value of None finds the calling module path.
+    """
+    Nose test runner.
 
     This class is made available as numpy.testing.Tester, and a test function
-    is typically added to a package's __init__.py like so:
+    is typically added to a package's __init__.py like so::
 
-    >>> from numpy.testing import Tester
-    >>> test = Tester().test
+      from numpy.testing import Tester
+      test = Tester().test
 
     Calling this test function finds and runs all tests associated with the
-    package and all its subpackages.
+    package and all its sub-packages.
+
+    Attributes
+    ----------
+    package_path : str
+        Full path to the package to test.
+    package_name : str
+        Name of the package to test.
+
+    Parameters
+    ----------
+    package : module, str or None
+        The package to test. If a string, this should be the full path to
+        the package. If None (default), `package` is set to the module from
+        which `NoseTester` is initialized.
 
     """
 
@@ -115,18 +145,26 @@ class NoseTester(object):
             If None, extract calling module path
             Default is None
         '''
+        package_name = None
         if package is None:
             f = sys._getframe(1)
-            package = f.f_locals.get('__file__', None)
-            assert package is not None
-            package = os.path.dirname(package)
+            package_path = f.f_locals.get('__file__', None)
+            assert package_path is not None
+            package_path = os.path.dirname(package_path)
+            package_name = f.f_locals.get('__name__', None)
         elif isinstance(package, type(os)):
-            package = os.path.dirname(package.__file__)
-        self.package_path = package
+            package_path = os.path.dirname(package.__file__)
+            package_name = getattr(package, '__name__', None)
+        else:
+            package_path = str(package)
+
+        self.package_path = package_path
 
         # find the package name under test; this name is used to limit coverage
         # reporting (if enabled)
-        self.package_name = get_package_name(package)
+        if package_name is None:
+            package_name = get_package_name(package_path)
+        self.package_name = package_name
 
     def _test_argv(self, label, verbose, extra_argv):
         ''' Generate argv for nosetest command
@@ -166,16 +204,17 @@ class NoseTester(object):
 
     def prepare_test_args(self, label='fast', verbose=1, extra_argv=None, 
                           doctests=False, coverage=False):
-        ''' Run tests for module using nose
+        """
+        Run tests for module using nose.
 
-        %(test_header)s
-        doctests : boolean
-            If True, run doctests in module, default False
-        coverage : boolean
-            If True, report coverage of NumPy code, default False
-            (Requires the coverage module:
-             http://nedbatchelder.com/code/modules/coverage.html)
-        '''
+        This method does the heavy lifting for the `test` method. It takes all
+        the same arguments, for details see `test`.
+
+        See Also
+        --------
+        test
+
+        """
 
         # if doctests is in the extra args, remove it and set the doctest
         # flag so the NumPy doctester is used instead
@@ -217,16 +256,61 @@ class NoseTester(object):
 
     def test(self, label='fast', verbose=1, extra_argv=None, doctests=False,
              coverage=False):
-        ''' Run tests for module using nose
+        """
+        Run tests for module using nose.
 
-        %(test_header)s
-        doctests : boolean
-            If True, run doctests in module, default False
-        coverage : boolean
-            If True, report coverage of NumPy code, default False
-            (Requires the coverage module:
-             http://nedbatchelder.com/code/modules/coverage.html)
-        '''
+        Parameters
+        ----------
+        label : {'fast', 'full', '', attribute identifier}, optional
+            Identifies the tests to run. This can be a string to pass to the
+            nosetests executable with the '-A' option, or one of
+            several special values.
+            Special values are:
+                'fast' - the default - which corresponds to the ``nosetests -A``
+                         option of 'not slow'.
+                'full' - fast (as above) and slow tests as in the
+                         'no -A' option to nosetests - this is the same as ''.
+            None or '' - run all tests.
+            attribute_identifier - string passed directly to nosetests as '-A'.
+        verbose : int, optional
+            Verbosity value for test outputs, in the range 1-10. Default is 1.
+        extra_argv : list, optional
+            List with any extra arguments to pass to nosetests.
+        doctests : bool, optional
+            If True, run doctests in module. Default is False.
+        coverage : bool, optional
+            If True, report coverage of NumPy code. Default is False.
+            (This requires the `coverage module:
+             <http://nedbatchelder.com/code/modules/coverage.html>`_).
+
+        Returns
+        -------
+        result : object
+            Returns the result of running the tests as a
+            ``nose.result.TextTestResult`` object.
+
+        Notes
+        -----
+        Each NumPy module exposes `test` in its namespace to run all tests for it.
+        For example, to run all tests for numpy.lib::
+
+          >>> np.lib.test()
+
+        Examples
+        --------
+        >>> result = np.lib.test()
+        Running unit tests for numpy.lib
+        ...
+        Ran 976 tests in 3.933s
+
+        OK
+
+        >>> result.errors
+        []
+        >>> result.knownfail
+        []
+
+        """
 
         # cap verbosity at 3 because nose becomes *very* verbose beyond that
         verbose = min(verbose, 3)
@@ -252,9 +336,61 @@ class NoseTester(object):
         return t.result
 
     def bench(self, label='fast', verbose=1, extra_argv=None):
-        ''' Run benchmarks for module using nose
+        """
+        Run benchmarks for module using nose.
 
-        %(test_header)s'''
+        Parameters
+        ----------
+        label : {'fast', 'full', '', attribute identifier}, optional
+            Identifies the tests to run. This can be a string to pass to the
+            nosetests executable with the '-A' option, or one of
+            several special values.
+            Special values are:
+                'fast' - the default - which corresponds to the ``nosetests -A``
+                         option of 'not slow'.
+                'full' - fast (as above) and slow tests as in the
+                         'no -A' option to nosetests - this is the same as ''.
+            None or '' - run all tests.
+            attribute_identifier - string passed directly to nosetests as '-A'.
+        verbose : int, optional
+            Verbosity value for test outputs, in the range 1-10. Default is 1.
+        extra_argv : list, optional
+            List with any extra arguments to pass to nosetests.
+
+        Returns
+        -------
+        success : bool
+            Returns True if running the benchmarks works, False if an error
+            occurred.
+
+        Notes
+        -----
+        Benchmarks are like tests, but have names starting with "bench" instead
+        of "test", and can be found under the "benchmarks" sub-directory of the
+        module.
+
+        Each NumPy module exposes `bench` in its namespace to run all benchmarks
+        for it.
+
+        Examples
+        --------
+        >>> success = np.lib.bench()
+        Running benchmarks for numpy.lib
+        ...
+        using 562341 items:
+        unique:
+        0.11
+        unique1d:
+        0.11
+        ratio: 1.0
+        nUnique: 56230 == 56230
+        ...
+        OK
+
+        >>> success
+        True
+
+        """
 
         print "Running benchmarks for %s" % self.package_name
         self._show_system_info()

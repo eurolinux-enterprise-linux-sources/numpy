@@ -56,10 +56,14 @@ def set_printoptions(precision=None, threshold=None, edgeitems=None,
     suppress : bool, optional
         Whether or not suppress printing of small floating point values
         using scientific notation (default False).
-    nanstr : string, optional
-        String representation of floating point not-a-number (default nan).
-    infstr : string, optional
-        String representation of floating point infinity (default inf).
+    nanstr : str, optional
+        String representation of floating point not-a-number (default NaN).
+    infstr : str, optional
+        String representation of floating point infinity (default Inf).
+
+    See Also
+    --------
+    get_printoptions, set_string_function
 
     Examples
     --------
@@ -79,12 +83,9 @@ def set_printoptions(precision=None, threshold=None, edgeitems=None,
 
     >>> eps = np.finfo(float).eps
     >>> x = np.arange(4.)
-
     >>> x**2 - (x + eps)**2
     array([ -4.9304e-32,  -4.4409e-16,   0.0000e+00,   0.0000e+00])
-
     >>> np.set_printoptions(suppress=True)
-
     >>> x**2 - (x + eps)**2
     array([-0., -0.,  0.,  0.])
 
@@ -121,12 +122,14 @@ def get_printoptions():
           - edgeitems : int
           - linewidth : int
           - suppress : bool
-          - nanstr : string
-          - infstr : string
+          - nanstr : str
+          - infstr : str
+
+        For a full description of these options, see `set_printoptions`.
 
     See Also
     --------
-    set_printoptions : parameter descriptions
+    set_printoptions, set_string_function
 
     """
     d = dict(precision=_float_output_precision,
@@ -247,9 +250,9 @@ def array2string(a, max_line_width = None, precision = None,
     suppress_small : bool, optional
         Represent very small numbers as zero. A number is "very small" if it
         is smaller than the current printing precision.
-    separator : string, optional
+    separator : str, optional
         Inserted between elements.
-    prefix : string, optional
+    prefix : str, optional
         An array is typically printed as::
 
           'prefix(' + array2string(a) + ')'

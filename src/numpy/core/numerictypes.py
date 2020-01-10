@@ -15,6 +15,7 @@ Exported symbols include:
     uint8 uint16 uint32 uint64 uint128
     float16 float32 float64 float96 float128 float256
     complex32 complex64 complex128 complex192 complex256 complex512
+    datetime64 timedelta64
 
     c-based names
 
@@ -31,9 +32,13 @@ Exported symbols include:
     int_, uint,
     longlong, ulonglong,
 
+
     single, csingle,
     float_, complex_,
     longfloat, clongfloat,
+
+    datetime_, timedelta_,  (these inherit from timeinteger which inherits from signedinteger)
+    
 
    As part of the type-hierarchy:    xx -- is bit-width
 
@@ -76,7 +81,8 @@ Exported symbols include:
 # we add more at the bottom
 __all__ = ['sctypeDict', 'sctypeNA', 'typeDict', 'typeNA', 'sctypes',
            'ScalarType', 'obj2sctype', 'cast', 'nbytes', 'sctype2char',
-           'maximum_sctype', 'issctype', 'typecodes', 'find_common_type']
+           'maximum_sctype', 'issctype', 'typecodes', 'find_common_type',
+           'issubdtype']
 
 from numpy.core.multiarray import typeinfo, ndarray, array, empty, dtype
 import types as _types
@@ -84,7 +90,6 @@ import types as _types
 # we don't export these for import *, but we do want them accessible
 # as numerictypes.bool, etc.
 from __builtin__ import bool, int, long, float, complex, object, unicode, str
-
 
 # String-handling utilities to avoid locale-dependence.
 
@@ -242,7 +247,7 @@ def bitname(obj):
         base = 'object'
         bits = 0
 
-    bytes = bits / 8
+    bytes = bits // 8
 
     if char != '' and bytes != 0:
         char = "%s%d" % (char, bytes)
@@ -282,7 +287,7 @@ def _add_aliases():
                 allTypes[myname] = typeobj
                 sctypeDict[myname] = typeobj
                 if base == 'complex':
-                    na_name = '%s%d' % (english_capitalize(base), bit/2)
+                    na_name = '%s%d' % (english_capitalize(base), bit//2)
                 elif base == 'bool':
                     na_name = english_capitalize(base)
                     sctypeDict[na_name] = typeobj
@@ -312,8 +317,8 @@ def _add_integer_aliases():
     for ctype in _ctypes:
         val = typeinfo[ctype]
         bits = val[2]
-        charname = 'i%d' % (bits/8,)
-        ucharname = 'u%d' % (bits/8,)
+        charname = 'i%d' % (bits//8,)
+        ucharname = 'u%d' % (bits//8,)
         intname = 'int%d' % bits
         UIntname = 'UInt%d' % bits
         Intname = 'Int%d' % bits
@@ -368,13 +373,13 @@ def _set_up_aliases():
                   ('unicode_', 'unicode'),
                   ('str_', 'string'),
                   ('string_', 'string'),
-                  ('object_', 'object')]
+                  ('object_', 'object'),]
     for alias, t in type_pairs:
         allTypes[alias] = allTypes[t]
         sctypeDict[alias] = sctypeDict[t]
     # Remove aliases overriding python types and modules
     for t in ['ulong', 'object', 'unicode', 'int', 'long', 'float',
-              'complex', 'bool', 'string']:
+              'complex', 'bool', 'string', 'datetime']:
         try:
             del allTypes[t]
             del sctypeDict[t]
@@ -439,7 +444,43 @@ genericTypeRank = ['bool', 'int8', 'uint8', 'int16', 'uint16',
                    'complex192', 'complex256', 'complex512', 'object']
 
 def maximum_sctype(t):
-    """returns the sctype of highest precision of the same general kind as 't'"""
+    """
+    Return the scalar type of highest precision of the same kind as the input.
+
+    Parameters
+    ----------
+    t : dtype or dtype specifier
+        The input data type. This can be a `dtype` object or an object that
+        is convertible to a `dtype`.
+
+    Returns
+    -------
+    out : dtype
+        The highest precision data type of the same kind (`dtype.kind`) as `t`.
+
+    See Also
+    --------
+    obj2sctype, mintypecode, sctype2char
+    dtype
+
+    Examples
+    --------
+    >>> np.maximum_sctype(np.int)
+    <type 'numpy.int64'>
+    >>> np.maximum_sctype(np.uint8)
+    <type 'numpy.uint64'>
+    >>> np.maximum_sctype(np.complex)
+    <type 'numpy.complex192'>
+
+    >>> np.maximum_sctype(str)
+    <type 'numpy.string_'>
+
+    >>> np.maximum_sctype('i2')
+    <type 'numpy.int64'>
+    >>> np.maximum_sctype('f4')
+    <type 'numpy.float96'>
+
+    """
     g = obj2sctype(t)
     if g is None:
         return t
@@ -466,8 +507,34 @@ def _python_type(t):
     return allTypes[_python_types.get(t, 'object_')]
 
 def issctype(rep):
-    """Determines whether the given object represents
-    a numeric array type."""
+    """
+    Determines whether the given object represents a scalar data-type.
+
+    Parameters
+    ----------
+    rep : any
+        If `rep` is an instance of a scalar dtype, True is returned. If not,
+        False is returned.
+
+    Returns
+    -------
+    out : bool
+        Boolean result of check whether `rep` is a scalar dtype.
+
+    See Also
+    --------
+    issubsctype, issubdtype, obj2sctype, sctype2char
+
+    Examples
+    --------
+    >>> np.issctype(np.int32)
+    True
+    >>> np.issctype(list)
+    False
+    >>> np.issctype(1.1)
+    False
+
+    """
     if not isinstance(rep, (type, dtype)):
         return False
     try:
@@ -504,6 +571,33 @@ def issubclass_(arg1, arg2):
         return False
 
 def issubsctype(arg1, arg2):
+    """
+    Determine if the first argument is a subclass of the second argument.
+
+    Parameters
+    ----------
+    arg1, arg2 : dtype or dtype specifier
+        Data-types.
+
+    Returns
+    -------
+    out : bool
+        The result.
+
+    See Also
+    --------
+    issctype, issubdtype,obj2sctype
+
+    Examples
+    --------
+    >>> np.issubsctype('S8', str)
+    True
+    >>> np.issubsctype(np.array([1]), np.int)
+    True
+    >>> np.issubsctype(np.array([1]), np.float)
+    False
+
+    """
     return issubclass(obj2sctype(arg1), obj2sctype(arg2))
 
 def issubdtype(arg1, arg2):
@@ -512,14 +606,16 @@ def issubdtype(arg1, arg2):
 
     Parameters
     ----------
-    arg1 : dtype_like
-        dtype or string representing a typecode.
-    arg2 : dtype_like
+    arg1, arg2 : dtype_like
         dtype or string representing a typecode.
 
+    Returns
+    -------
+    out : bool
 
     See Also
     --------
+    issubsctype, issubclass_
     numpy.core.numerictypes : Overview of numpy type hierarchy.
 
     Examples
@@ -542,6 +638,13 @@ def issubdtype(arg1, arg2):
 
 # This dictionary allows look up based on any alias for an array data-type
 class _typedict(dict):
+    """
+    Base object for a dictionary for look-up with any alias for an array dtype.
+
+    Instances of `_typedict` can not be used as dictionaries directly,
+    first they have to be populated.
+
+    """
     def __getitem__(self, obj):
         return dict.__getitem__(self, obj2sctype(obj))
 
@@ -554,7 +657,7 @@ def _construct_lookups():
         if not isinstance(val, tuple):
             continue
         obj = val[-1]
-        nbytes[obj] = val[2] / 8
+        nbytes[obj] = val[2] // 8
         _alignment[obj] = val[3]
         if (len(val) > 5):
             _maxvals[obj] = val[4]
@@ -566,6 +669,47 @@ def _construct_lookups():
 _construct_lookups()
 
 def sctype2char(sctype):
+    """
+    Return the string representation of a scalar dtype.
+
+    Parameters
+    ----------
+    sctype : scalar dtype or object
+        If a scalar dtype, the corresponding string character is
+        returned. If an object, `sctype2char` tries to infer its scalar type
+        and then return the corresponding string character.
+
+    Returns
+    -------
+    typechar : str
+        The string character corresponding to the scalar type.
+
+    Raises
+    ------
+    ValueError
+        If `sctype` is an object for which the type can not be inferred.
+
+    See Also
+    --------
+    obj2sctype, issctype, issubsctype, mintypecode
+
+    Examples
+    --------
+    >>> for sctype in [np.int32, np.float, np.complex, np.string_, np.ndarray]:
+    ...     print np.sctype2char(sctype)
+    l
+    d
+    D
+    S
+    O
+
+    >>> x = np.array([1., 2-1.j])
+    >>> np.sctype2char(x)
+    'D'
+    >>> np.sctype2char(list)
+    'O'
+
+    """
     sctype = obj2sctype(sctype)
     if sctype is None:
         raise ValueError, "unrecognized type"
@@ -624,7 +768,8 @@ typecodes = {'Character':'c',
              'Complex':'FDG',
              'AllInteger':'bBhHiIlLqQpP',
              'AllFloat':'fdgFDG',
-             'All':'?bhilqpBHILQPfdgFDGSUVO'}
+             'Datetime': 'Mm',
+             'All':'?bhilqpBHILQPfdgFDGSUVOMm'}
 
 # backwards compatibility --- deprecated name
 typeDict = sctypeDict
@@ -635,11 +780,13 @@ typeNA = sctypeNA
 # i -> signed integer
 # f -> floating point
 # c -> complex
+# M -> datetime
+# m -> timedelta
 # S -> string
 # U -> Unicode string
 # V -> record
 # O -> Python object
-_kind_list = ['b', 'u', 'i', 'f', 'c', 'S', 'U', 'V', 'O']
+_kind_list = ['b', 'u', 'i', 'f', 'c', 'S', 'U', 'V', 'O', 'M', 'm']
 
 __test_types = typecodes['AllInteger'][:-2]+typecodes['AllFloat']+'O'
 __len_test_types = len(__test_types)
@@ -653,52 +800,86 @@ def _find_common_coerce(a, b):
         thisind = __test_types.index(a.char)
     except ValueError:
         return None
+    return _can_coerce_all([a,b], start=thisind)
+
+# Find a data-type that all data-types in a list can be coerced to
+def _can_coerce_all(dtypelist, start=0):
+    N = len(dtypelist)
+    if N == 0:
+        return None
+    if N == 1:
+        return dtypelist[0]
+    thisind = start
     while thisind < __len_test_types:
         newdtype = dtype(__test_types[thisind])
-        if newdtype >= b and newdtype >= a:
+        numcoerce = len([x for x in dtypelist if newdtype >= x])
+        if numcoerce == N:
             return newdtype
         thisind += 1
     return None
 
-
 def find_common_type(array_types, scalar_types):
     """
-    Determine common type following standard coercion rules
+    Determine common type following standard coercion rules.
 
     Parameters
     ----------
     array_types : sequence
-        A list of dtype convertible objects representing arrays
+        A list of dtypes or dtype convertible objects representing arrays.
     scalar_types : sequence
-        A list of dtype convertible objects representing scalars
+        A list of dtypes or dtype convertible objects representing scalars.
 
     Returns
     -------
     datatype : dtype
-        The common data-type which is the maximum of the array_types
-        ignoring the scalar_types unless the maximum of the scalar_types
-        is of a different kind.
-
-        If the kinds is not understood, then None is returned.
+        The common data type, which is the maximum of `array_types` ignoring
+        `scalar_types`, unless the maximum of `scalar_types` is of a
+        different kind (`dtype.kind`). If the kind is not understood, then
+        None is returned.
 
     See Also
     --------
-    dtype
+    dtype, common_type, can_cast, mintypecode
+
+    Examples
+    --------
+    >>> np.find_common_type([], [np.int64, np.float32, np.complex])
+    dtype('complex128')
+    >>> np.find_common_type([np.int64, np.float32], [])
+    dtype('float64')
+
+    The standard casting rules ensure that a scalar cannot up-cast an
+    array unless the scalar is of a fundamentally different kind of data
+    (i.e. under a different hierarchy in the data type hierarchy) then
+    the array:
+
+    >>> np.find_common_type([np.float32], [np.int64, np.float64])
+    dtype('float32')
+
+    Complex is of a different type, so it up-casts the float in the
+    `array_types` argument:
+
+    >>> np.find_common_type([np.float32], [np.complex])
+    dtype('complex128')
+
+    Type specifier strings are convertible to dtypes and can therefore
+    be used instead of dtypes:
+
+    >>> np.find_common_type(['f4', 'f4', 'i4'], ['c8'])
+    dtype('complex128')
 
     """
     array_types = [dtype(x) for x in array_types]
     scalar_types = [dtype(x) for x in scalar_types]
 
-    if len(scalar_types) == 0:
-        if len(array_types) == 0:
-            return None
-        else:
-            return max(array_types)
-    if len(array_types) == 0:
-        return max(scalar_types)
+    maxa = _can_coerce_all(array_types)
+    maxsc = _can_coerce_all(scalar_types)
 
-    maxa = max(array_types)
-    maxsc = max(scalar_types)
+    if maxa is None:
+        return maxsc
+
+    if maxsc is None:
+        return maxa
 
     try:
         index_a = _kind_list.index(maxa.kind)

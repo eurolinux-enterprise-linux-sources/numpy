@@ -1,3 +1,5 @@
+import sys
+
 from numpy.testing import *
 import numpy.core.umath as ncu
 import numpy as np
@@ -9,6 +11,29 @@ class TestDivision(TestCase):
         assert_equal(x / 100, [0, 0, 0, 1, -1, -1, -1, -1, -2])
         assert_equal(x // 100, [0, 0, 0, 1, -1, -1, -1, -1, -2])
         assert_equal(x % 100, [5, 10, 90, 0, 95, 90, 10, 0, 80])
+
+    def test_division_complex(self):
+        # check that implementation is correct
+        msg = "Complex division implementation check"
+        x = np.array([1. + 1.*1j, 1. + .5*1j, 1. + 2.*1j], dtype=np.complex128)
+        assert_almost_equal(x**2/x, x, err_msg=msg)
+        # check overflow, underflow
+        msg = "Complex division overflow/underflow check"
+        x = np.array([1.e+110, 1.e-110], dtype=np.complex128)
+        y = x**2/x
+        assert_almost_equal(y/x, [1, 1], err_msg=msg)
+
+    def test_floor_division_complex(self):
+        # check that implementation is correct
+        msg = "Complex floor division implementation check"
+        x = np.array([.9 + 1j, -.1 + 1j, .9 + .5*1j, .9 + 2.*1j], dtype=np.complex128)
+        y = np.array([0., -1., 0., 0.], dtype=np.complex128)
+        assert_equal(np.floor_divide(x**2,x), y, err_msg=msg)
+        # check overflow, underflow
+        msg = "Complex floor division overflow/underflow check"
+        x = np.array([1.e+110, 1.e-110], dtype=np.complex128)
+        y = np.floor_divide(x**2, x)
+        assert_equal(y, [1.e+110, 0], err_msg=msg)
 
 class TestPower(TestCase):
     def test_power_float(self):
@@ -26,23 +51,25 @@ class TestPower(TestCase):
         x = np.array([1+2j, 2+3j, 3+4j])
         assert_equal(x**0, [1., 1., 1.])
         assert_equal(x**1, x)
-        assert_equal(x**2, [-3+4j, -5+12j, -7+24j])
-        assert_equal(x**3, [(1+2j)**3, (2+3j)**3, (3+4j)**3])
-        assert_equal(x**4, [(1+2j)**4, (2+3j)**4, (3+4j)**4])
+        assert_almost_equal(x**2, [-3+4j, -5+12j, -7+24j])
+        assert_almost_equal(x**3, [(1+2j)**3, (2+3j)**3, (3+4j)**3])
+        assert_almost_equal(x**4, [(1+2j)**4, (2+3j)**4, (3+4j)**4])
         assert_almost_equal(x**(-1), [1/(1+2j), 1/(2+3j), 1/(3+4j)])
         assert_almost_equal(x**(-2), [1/(1+2j)**2, 1/(2+3j)**2, 1/(3+4j)**2])
         assert_almost_equal(x**(-3), [(-11+2j)/125, (-46-9j)/2197,
                                       (-117-44j)/15625])
         assert_almost_equal(x**(0.5), [ncu.sqrt(1+2j), ncu.sqrt(2+3j),
                                        ncu.sqrt(3+4j)])
-        assert_almost_equal(x**14, [-76443+16124j, 23161315+58317492j,
-                                    5583548873 +  2465133864j])
+        norm = 1./((x**14)[0])
+        assert_almost_equal(x**14 * norm,
+                [i * norm for i in [-76443+16124j, 23161315+58317492j,
+                                    5583548873 +  2465133864j]])
 
         # Ticket #836
         def assert_complex_equal(x, y):
             assert_array_equal(x.real, y.real)
             assert_array_equal(x.imag, y.imag)
-        
+
         for z in [complex(0, np.inf), complex(1, np.inf)]:
             z = np.array([z], dtype=np.complex_)
             assert_complex_equal(z**1, z)
@@ -87,7 +114,25 @@ class TestLogAddExp2(object):
             logxf = np.array(x, dtype=dt)
             logyf = np.array(y, dtype=dt)
             logzf = np.array(z, dtype=dt)
-            assert_almost_equal(np.logaddexp(logxf, logyf), logzf)
+            assert_almost_equal(np.logaddexp2(logxf, logyf), logzf)
+
+    def test_inf(self) :
+        inf = np.inf
+        x = [inf, -inf,  inf, -inf, inf, 1,  -inf,  1]
+        y = [inf,  inf, -inf, -inf, 1,   inf, 1,   -inf]
+        z = [inf,  inf,  inf, -inf, inf, inf, 1,    1]
+        for dt in ['f','d','g'] :
+            logxf = np.array(x, dtype=dt)
+            logyf = np.array(y, dtype=dt)
+            logzf = np.array(z, dtype=dt)
+            assert_equal(np.logaddexp2(logxf, logyf), logzf)
+
+    def test_nan(self):
+        assert np.isnan(np.logaddexp2(np.nan, np.inf))
+        assert np.isnan(np.logaddexp2(np.inf, np.nan))
+        assert np.isnan(np.logaddexp2(np.nan, 0))
+        assert np.isnan(np.logaddexp2(0, np.nan))
+        assert np.isnan(np.logaddexp2(np.nan, np.nan))
 
 class TestLog(TestCase):
     def test_log_values(self) :
@@ -130,6 +175,24 @@ class TestLogAddExp(object):
             logzf = np.array(z, dtype=dt)
             assert_almost_equal(np.logaddexp(logxf, logyf), logzf)
 
+    def test_inf(self) :
+        inf = np.inf
+        x = [inf, -inf,  inf, -inf, inf, 1,  -inf,  1]
+        y = [inf,  inf, -inf, -inf, 1,   inf, 1,   -inf]
+        z = [inf,  inf,  inf, -inf, inf, inf, 1,    1]
+        for dt in ['f','d','g'] :
+            logxf = np.array(x, dtype=dt)
+            logyf = np.array(y, dtype=dt)
+            logzf = np.array(z, dtype=dt)
+            assert_equal(np.logaddexp(logxf, logyf), logzf)
+
+    def test_nan(self):
+        assert np.isnan(np.logaddexp(np.nan, np.inf))
+        assert np.isnan(np.logaddexp(np.inf, np.nan))
+        assert np.isnan(np.logaddexp(np.nan, 0))
+        assert np.isnan(np.logaddexp(0, np.nan))
+        assert np.isnan(np.logaddexp(np.nan, np.nan))
+
 class TestLog1p(TestCase):
     def test_log1p(self):
         assert_almost_equal(ncu.log1p(0.2), ncu.log(1.2))
@@ -139,6 +202,111 @@ class TestExpm1(TestCase):
     def test_expm1(self):
         assert_almost_equal(ncu.expm1(0.2), ncu.exp(0.2)-1)
         assert_almost_equal(ncu.expm1(1e-6), ncu.exp(1e-6)-1)
+
+class TestHypot(TestCase, object):
+    def test_simple(self):
+        assert_almost_equal(ncu.hypot(1, 1), ncu.sqrt(2))
+        assert_almost_equal(ncu.hypot(0, 0), 0)
+
+def assert_hypot_isnan(x, y):
+    assert np.isnan(ncu.hypot(x, y)), "hypot(%s, %s) is %s, not nan" % (x, y, ncu.hypot(x, y))
+
+def assert_hypot_isinf(x, y):
+    assert np.isinf(ncu.hypot(x, y)), "hypot(%s, %s) is %s, not inf" % (x, y, ncu.hypot(x, y))
+
+class TestHypotSpecialValues(TestCase):
+    def test_nan_outputs(self):
+        assert_hypot_isnan(np.nan, np.nan)
+        assert_hypot_isnan(np.nan, 1)
+
+    def test_nan_outputs(self):
+        assert_hypot_isinf(np.nan, np.inf)
+        assert_hypot_isinf(np.inf, np.nan)
+        assert_hypot_isinf(np.inf, 0)
+        assert_hypot_isinf(0, np.inf)
+
+def assert_arctan2_isnan(x, y):
+    assert np.isnan(ncu.arctan2(x, y)), "arctan(%s, %s) is %s, not nan" % (x, y, ncu.arctan2(x, y))
+
+def assert_arctan2_ispinf(x, y):
+    assert (np.isinf(ncu.arctan2(x, y)) and ncu.arctan2(x, y) > 0), "arctan(%s, %s) is %s, not +inf" % (x, y, ncu.arctan2(x, y))
+
+def assert_arctan2_isninf(x, y):
+    assert (np.isinf(ncu.arctan2(x, y)) and ncu.arctan2(x, y) < 0), "arctan(%s, %s) is %s, not -inf" % (x, y, ncu.arctan2(x, y))
+
+def assert_arctan2_ispzero(x, y):
+    assert (ncu.arctan2(x, y) == 0 and not np.signbit(ncu.arctan2(x, y))), "arctan(%s, %s) is %s, not +0" % (x, y, ncu.arctan2(x, y))
+
+def assert_arctan2_isnzero(x, y):
+    assert (ncu.arctan2(x, y) == 0 and np.signbit(ncu.arctan2(x, y))), "arctan(%s, %s) is %s, not -0" % (x, y, ncu.arctan2(x, y))
+
+class TestArctan2SpecialValues(TestCase):
+    def test_one_one(self):
+        # atan2(1, 1) returns pi/4.
+        assert_almost_equal(ncu.arctan2(1, 1), 0.25 * np.pi)
+        assert_almost_equal(ncu.arctan2(-1, 1), -0.25 * np.pi)
+        assert_almost_equal(ncu.arctan2(1, -1), 0.75 * np.pi)
+
+    def test_zero_nzero(self):
+        # atan2(+-0, -0) returns +-pi.
+        assert_almost_equal(ncu.arctan2(np.PZERO, np.NZERO), np.pi)
+        assert_almost_equal(ncu.arctan2(np.NZERO, np.NZERO), -np.pi)
+
+    def test_zero_pzero(self):
+        # atan2(+-0, +0) returns +-0.
+        assert_arctan2_ispzero(np.PZERO, np.PZERO)
+        assert_arctan2_isnzero(np.NZERO, np.PZERO)
+
+    def test_zero_negative(self):
+        # atan2(+-0, x) returns +-pi for x < 0.
+        assert_almost_equal(ncu.arctan2(np.PZERO, -1), np.pi)
+        assert_almost_equal(ncu.arctan2(np.NZERO, -1), -np.pi)
+
+    def test_zero_positive(self):
+        # atan2(+-0, x) returns +-0 for x > 0.
+        assert_arctan2_ispzero(np.PZERO, 1)
+        assert_arctan2_isnzero(np.NZERO, 1)
+
+    def test_positive_zero(self):
+        # atan2(y, +-0) returns +pi/2 for y > 0.
+        assert_almost_equal(ncu.arctan2(1, np.PZERO), 0.5 * np.pi)
+        assert_almost_equal(ncu.arctan2(1, np.NZERO), 0.5 * np.pi)
+
+    def test_negative_zero(self):
+        # atan2(y, +-0) returns -pi/2 for y < 0.
+        assert_almost_equal(ncu.arctan2(-1, np.PZERO), -0.5 * np.pi)
+        assert_almost_equal(ncu.arctan2(-1, np.NZERO), -0.5 * np.pi)
+
+    def test_any_ninf(self):
+        # atan2(+-y, -infinity) returns +-pi for finite y > 0.
+        assert_almost_equal(ncu.arctan2(1, np.NINF),  np.pi)
+        assert_almost_equal(ncu.arctan2(-1, np.NINF), -np.pi)
+
+    def test_any_pinf(self):
+        # atan2(+-y, +infinity) returns +-0 for finite y > 0.
+        assert_arctan2_ispzero(1, np.inf)
+        assert_arctan2_isnzero(-1, np.inf)
+
+    def test_inf_any(self):
+        # atan2(+-infinity, x) returns +-pi/2 for finite x.
+        assert_almost_equal(ncu.arctan2( np.inf, 1),  0.5 * np.pi)
+        assert_almost_equal(ncu.arctan2(-np.inf, 1), -0.5 * np.pi)
+
+    def test_inf_ninf(self):
+        # atan2(+-infinity, -infinity) returns +-3*pi/4.
+        assert_almost_equal(ncu.arctan2( np.inf, -np.inf),  0.75 * np.pi)
+        assert_almost_equal(ncu.arctan2(-np.inf, -np.inf), -0.75 * np.pi)
+
+    def test_inf_pinf(self):
+        # atan2(+-infinity, +infinity) returns +-pi/4.
+        assert_almost_equal(ncu.arctan2( np.inf, np.inf),  0.25 * np.pi)
+        assert_almost_equal(ncu.arctan2(-np.inf, np.inf), -0.25 * np.pi)
+
+    def test_nan_any(self):
+        # atan2(nan, x) returns nan for any x, including inf
+        assert_arctan2_isnan(np.nan, np.inf)
+        assert_arctan2_isnan(np.inf, np.nan)
+        assert_arctan2_isnan(np.nan, np.nan)
 
 class TestMaximum(TestCase):
     def test_reduce_complex(self):
@@ -333,6 +501,38 @@ class TestSpecialMethods(TestCase):
             def __array__(self):
                 return np.zeros(1)
             def __array_wrap__(self, arr, context):
+                raise RuntimeError
+        a = A()
+        self.failUnlessRaises(RuntimeError, ncu.maximum, a, a)
+
+    def test_default_prepare(self):
+        class with_wrap(object):
+            __array_priority__ = 10
+            def __array__(self):
+                return np.zeros(1)
+            def __array_wrap__(self, arr, context):
+                return arr
+        a = with_wrap()
+        x = ncu.minimum(a, a)
+        assert_equal(x, np.zeros(1))
+        assert_equal(type(x), np.ndarray)
+
+    def test_prepare(self):
+        class with_prepare(np.ndarray):
+            __array_priority__ = 10
+            def __array_prepare__(self, arr, context):
+                # make sure we can return a new 
+                return np.array(arr).view(type=with_prepare)
+        a = np.array(1).view(type=with_prepare)
+        x = np.add(a, a)
+        assert_equal(x, np.array(2))
+        assert_equal(type(x), with_prepare)
+
+    def test_failing_prepare(self):
+        class A(object):
+            def __array__(self):
+                return np.zeros(1)
+            def __array_prepare__(self, arr, context=None):
                 raise RuntimeError
         a = A()
         self.failUnlessRaises(RuntimeError, ncu.maximum, a, a)
@@ -637,9 +837,126 @@ def _check_branch_cut(f, x0, dx, re_sign=1, im_sign=-1, sig_zero_ok=False,
         assert np.all(np.absolute(y0.real - ym.real*re_sign) < atol), (y0, ym)
         assert np.all(np.absolute(y0.imag - ym.imag*im_sign) < atol), (y0, ym)
 
+def test_copysign():
+    assert np.copysign(1, -1) == -1
+    assert 1 / np.copysign(0, -1) < 0
+    assert 1 / np.copysign(0, 1) > 0
+    assert np.signbit(np.copysign(np.nan, -1))
+    assert not np.signbit(np.copysign(np.nan, 1))
+
+def _test_nextafter(t):
+    one = t(1)
+    two = t(2)
+    zero = t(0)
+    eps = np.finfo(t).eps
+    assert np.nextafter(one, two) - one == eps
+    assert np.nextafter(one, zero) - one < 0
+    assert np.isnan(np.nextafter(np.nan, one))
+    assert np.isnan(np.nextafter(one, np.nan))
+    assert np.nextafter(one, one) == one
+
+def test_nextafter():
+    return _test_nextafter(np.float64)
+
+def test_nextafterf():
+    return _test_nextafter(np.float32)
+
+@dec.knownfailureif(sys.platform == 'win32', "Long double support buggy on win32")
+def test_nextafterl():
+    return _test_nextafter(np.longdouble)
+
+def _test_spacing(t):
+    one = t(1)
+    eps = np.finfo(t).eps
+    nan = t(np.nan)
+    inf = t(np.inf)
+    assert np.spacing(one) == eps
+    assert np.isnan(np.spacing(nan))
+    assert np.isnan(np.spacing(inf))
+    assert np.isnan(np.spacing(-inf))
+    assert np.spacing(t(1e30)) != 0
+
+def test_spacing():
+    return _test_spacing(np.float64)
+
+def test_spacingf():
+    return _test_spacing(np.float32)
+
+@dec.knownfailureif(sys.platform == 'win32', "Long double support buggy on win32")
+def test_spacingl():
+    return _test_spacing(np.longdouble)
+
+def test_spacing_gfortran():
+    # Reference from this fortran file, built with gfortran 4.3.3 on linux
+    # 32bits:
+    #       PROGRAM test_spacing
+    #        INTEGER, PARAMETER :: SGL = SELECTED_REAL_KIND(p=6, r=37)
+    #        INTEGER, PARAMETER :: DBL = SELECTED_REAL_KIND(p=13, r=200)
+    #
+    #        WRITE(*,*) spacing(0.00001_DBL)
+    #        WRITE(*,*) spacing(1.0_DBL)
+    #        WRITE(*,*) spacing(1000._DBL)
+    #        WRITE(*,*) spacing(10500._DBL)
+    #
+    #        WRITE(*,*) spacing(0.00001_SGL)
+    #        WRITE(*,*) spacing(1.0_SGL)
+    #        WRITE(*,*) spacing(1000._SGL)
+    #        WRITE(*,*) spacing(10500._SGL)
+    #       END PROGRAM
+    ref = {}
+    ref[np.float64] = [1.69406589450860068E-021,
+           2.22044604925031308E-016,
+           1.13686837721616030E-013,
+           1.81898940354585648E-012]
+    ref[np.float32] = [
+            9.09494702E-13,
+            1.19209290E-07,
+            6.10351563E-05,
+            9.76562500E-04]
+
+    for dt, dec in zip([np.float32, np.float64], (10, 20)):
+        x = np.array([1e-5, 1, 1000, 10500], dtype=dt)
+        assert_array_almost_equal(np.spacing(x), ref[dt], decimal=dec)
+
+def test_nextafter_vs_spacing():
+    # XXX: spacing does not handle long double yet
+    for t in [np.float32, np.float64]:
+        for _f in [1, 1e-5, 1000]:
+            f = t(_f)
+            f1 = t(_f + 1)
+            assert np.nextafter(f, f1) - f == np.spacing(f)
+
 def test_pos_nan():
     """Check np.nan is a positive nan."""
     assert np.signbit(np.nan) == 0
+
+def test_reduceat():
+    """Test bug in reduceat with structured arrays copied for speed."""
+    db = np.dtype([('name', 'S11'),('time', np.int64), ('value', np.float32)])
+    a = np.empty([100], dtype=db)
+    a['name'] = 'Simple'
+    a['time'] = 10
+    a['value'] = 100
+    indx = [0,7,15,25]
+
+    h2 = []
+    val1 = indx[0]
+    for val2 in indx[1:]:
+        h2.append(np.add.reduce(a['value'][val1:val2]))
+        val1 = val2
+    h2.append(np.add.reduce(a['value'][val1:]))
+    h2 = np.array(h2)
+
+    # test buffered
+    res = np.setbufsize(32)
+    h1 = np.add.reduceat(a['value'], indx)
+    assert_array_almost_equal(h1, h2)
+    
+    # test nobuffer
+    np.setbufsize(res)
+    h1 = np.add.reduceat(a['value'], indx)    
+    assert_array_almost_equal(h1, h2)
+    
 
 if __name__ == "__main__":
     run_module_suite()
