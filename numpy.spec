@@ -6,7 +6,7 @@
 
 Name:           numpy
 Version:        1.7.1
-Release:        11%{?dist}
+Release:        13%{?dist}
 Epoch:          1
 Summary:        A fast multidimensional array facility for Python
 
@@ -24,6 +24,10 @@ Source0:        http://downloads.sourceforge.net/numpy/%{name}-%{version}%{?relc
 Patch0:         CVE-2014-1858-CVE-2014-1859.patch
 # bz1125621
 Patch1:		numpy-1.8.1.ppc64le.patch
+# bz1167156
+Patch2:		numpy-1.7.1.f2py.patch
+# bz1179055
+Patch3:		numpy-1.7.1-override-LAPACK-XERBLA.patch
 
 BuildRequires:  python2-devel lapack-devel python-setuptools gcc-gfortran atlas-devel python-nose
 Requires:       python-nose
@@ -94,6 +98,9 @@ This package includes a version of f2py that works properly with NumPy.
 %ifarch ppc64le
 %patch1 -p1
 %endif
+
+%patch2 -p1
+%patch3 -p1
 
 # workaround for rhbz#849713
 # http://mail.scipy.org/pipermail/numpy-discussion/2012-July/063530.html
@@ -266,6 +273,14 @@ popd &> /dev/null
 
 
 %changelog
+* Tue Jan 03 2017 nforro@redhat.com - 1:1.7.1-13
+- resolves: #1179055
+  override LAPACK XERBLA
+
+* Thu Dec 22 2016 nforro@redhat.com - 1:1.7.1-12
+- resolves: #1167156
+  fix bug in f2py leading to segfault in modules with shared symbols
+
 * Thu Aug 07 2014 jchaloup <jchaloup@redhat.com> - 1:1.7.1-11
 - resolves: #1125621
   support for ppc64le, taken from private-rhel-7.0-ppc64le branch

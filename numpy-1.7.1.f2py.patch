@@ -1,0 +1,35 @@
+From 64f64b517153a6b3de48c5b911920239b3eb1e18 Mon Sep 17 00:00:00 2001
+From: "Bradley M. Froehle" <brad.froehle@gmail.com>
+Date: Sun, 24 Feb 2013 21:31:28 -0800
+Subject: [PATCH] BUG: Choose a more unique PY_ARRAY_UNIQUE_SYMBOL in f2py.
+
+In a few exceptional cases where symbols are shared between different
+Python modules the use of `PyArray_API` in f2py (fortranobject.h)
+conflicts with the regular use of the same symbol in the multiarray
+module. Generally the symptom of this conflicting use is a segfault
+when importing a f2py'ed module. This occurs because the module init
+code somehow overwrites the first element of `PyArray_API` with the
+location of `PyArray_API`, causing a crash when
+`PyArray_GetNDArrayCVersion` is called.
+
+Closes gh-2521.
+---
+ numpy/f2py/src/fortranobject.h | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/numpy/f2py/src/fortranobject.h b/numpy/f2py/src/fortranobject.h
+index 283021a..07e810f 100644
+--- a/numpy/f2py/src/fortranobject.h
++++ b/numpy/f2py/src/fortranobject.h
+@@ -9,7 +9,7 @@ extern "C" {
+ #ifdef FORTRANOBJECT_C
+ #define NO_IMPORT_ARRAY
+ #endif
+-#define PY_ARRAY_UNIQUE_SYMBOL PyArray_API
++#define PY_ARRAY_UNIQUE_SYMBOL _npy_f2py_ARRAY_API
+ #include "numpy/arrayobject.h"
+ 
+ /*
+-- 
+2.7.4
+
