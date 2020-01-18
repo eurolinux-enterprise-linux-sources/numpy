@@ -6,7 +6,7 @@
 
 Name:           numpy
 Version:        1.7.1
-Release:        13%{?dist}
+Release:        5%{?dist}
 Epoch:          1
 Summary:        A fast multidimensional array facility for Python
 
@@ -15,19 +15,6 @@ Group:          Development/Languages
 License:        BSD and Python
 URL:            http://www.numpy.org/
 Source0:        http://downloads.sourceforge.net/numpy/%{name}-%{version}%{?relc}.tar.gz
-
-# Fix of CVE-2014-1858, CVE-2014-1859: #1062009
-# Modified version of 3 upstream commits, so they apply to current version:
-# - 8296aa0b911c036c984e23665ee0f7ddca579b91
-# - 524b9eaa33ec67e34eb31a208e02bb934f778096
-# - 0bb46c1448b0d3f5453d5182a17ea7ac5854ee15
-Patch0:         CVE-2014-1858-CVE-2014-1859.patch
-# bz1125621
-Patch1:		numpy-1.8.1.ppc64le.patch
-# bz1167156
-Patch2:		numpy-1.7.1.f2py.patch
-# bz1179055
-Patch3:		numpy-1.7.1-override-LAPACK-XERBLA.patch
 
 BuildRequires:  python2-devel lapack-devel python-setuptools gcc-gfortran atlas-devel python-nose
 Requires:       python-nose
@@ -93,14 +80,6 @@ This package includes a version of f2py that works properly with NumPy.
 
 %prep
 %setup -q -n %{name}-%{version}%{?relc}
-%patch0 -p1
-
-%ifarch ppc64le
-%patch1 -p1
-%endif
-
-%patch2 -p1
-%patch3 -p1
 
 # workaround for rhbz#849713
 # http://mail.scipy.org/pipermail/numpy-discussion/2012-July/063530.html
@@ -169,8 +148,7 @@ env ATLAS=%{_libdir} FFTW=%{_libdir} BLAS=%{_libdir} \
     %{__python} setup.py install --root %{buildroot}
 rm -rf docs-f2py ; mv %{buildroot}%{python_sitearch}/%{name}/f2py/docs docs-f2py
 mv -f %{buildroot}%{python_sitearch}/%{name}/f2py/f2py.1 f2py.1
-# remove sphinx docs, save dir for tests
-rm -rf doc/*
+rm -rf doc ; mv -f %{buildroot}%{python_sitearch}/%{name}/doc .
 install -D -p -m 0644 f2py.1 %{buildroot}%{_mandir}/man1/f2py.1
 pushd %{buildroot}%{_bindir} &> /dev/null
 
@@ -195,6 +173,10 @@ rm -f %{buildroot}%{python_sitearch}/%{name}/THANKS.txt
 rm -f %{buildroot}%{python_sitearch}/%{name}/site.cfg.example
 
 %check
+# doc/io.py conflicts with the regular io module causing
+# AttributeError: 'module' object has no attribute 'BufferedIOBase' in tests
+rm doc/io.py*
+
 pushd doc &> /dev/null
 PYTHONPATH="%{buildroot}%{python_sitearch}" %{__python} -c "import pkg_resources, numpy ; numpy.test(verbose=3)" \
 %ifarch s390 s390x
@@ -217,12 +199,11 @@ popd &> /dev/null
 
 
 %files
-%doc docs-f2py LICENSE.txt README.txt THANKS.txt DEV_README.txt COMPATIBILITY site.cfg.example
+%doc docs-f2py doc/* LICENSE.txt README.txt THANKS.txt DEV_README.txt COMPATIBILITY site.cfg.example
 %dir %{python_sitearch}/%{name}
 %{python_sitearch}/%{name}/*.py*
 %{python_sitearch}/%{name}/core
 %{python_sitearch}/%{name}/distutils
-%{python_sitearch}/%{name}/doc
 %{python_sitearch}/%{name}/fft
 %{python_sitearch}/%{name}/lib
 %{python_sitearch}/%{name}/linalg
@@ -273,33 +254,6 @@ popd &> /dev/null
 
 
 %changelog
-* Tue Jan 03 2017 nforro@redhat.com - 1:1.7.1-13
-- resolves: #1179055
-  override LAPACK XERBLA
-
-* Thu Dec 22 2016 nforro@redhat.com - 1:1.7.1-12
-- resolves: #1167156
-  fix bug in f2py leading to segfault in modules with shared symbols
-
-* Thu Aug 07 2014 jchaloup <jchaloup@redhat.com> - 1:1.7.1-11
-- resolves: #1125621
-  support for ppc64le, taken from private-rhel-7.0-ppc64le branch
-
-* Tue Mar 18 2014 Tomas Tomecek <ttomecek@redhat.com> - 1:1.7.1-10
-- fix changelog entry below
-
-* Mon Feb 10 2014 Tomas Tomecek <ttomecek@redhat.com> - 1:1.7.1-9
-- Fix CVE-2014-1858, CVE-2014-1859: #1062009
-
-* Fri Jan 24 2014 Daniel Mach <dmach@redhat.com> - 1:1.7.1-8
-- Mass rebuild 2014-01-24
-
-* Fri Dec 27 2013 Daniel Mach <dmach@redhat.com> - 1:1.7.1-7
-- Mass rebuild 2013-12-27
-
-* Mon Nov 25 2013 Tomas Tomecek <ttomecek@redhat.com> - 1:1.7.1-6
-- keep numpy.doc in site_arch
-
 * Wed Sep 25 2013 Tomas Tomecek <ttomecek@redhat.com> - 1:1.7.1-5
 - rebuilt with atlas 3.10, rhbz#1009069
 
