@@ -6,7 +6,7 @@
 
 Name:           numpy
 Version:        1.7.1
-Release:        10%{?dist}
+Release:        11%{?dist}
 Epoch:          1
 Summary:        A fast multidimensional array facility for Python
 
@@ -22,6 +22,8 @@ Source0:        http://downloads.sourceforge.net/numpy/%{name}-%{version}%{?relc
 # - 524b9eaa33ec67e34eb31a208e02bb934f778096
 # - 0bb46c1448b0d3f5453d5182a17ea7ac5854ee15
 Patch0:         CVE-2014-1858-CVE-2014-1859.patch
+# bz1125621
+Patch1:		numpy-1.8.1.ppc64le.patch
 
 BuildRequires:  python2-devel lapack-devel python-setuptools gcc-gfortran atlas-devel python-nose
 Requires:       python-nose
@@ -88,6 +90,10 @@ This package includes a version of f2py that works properly with NumPy.
 %prep
 %setup -q -n %{name}-%{version}%{?relc}
 %patch0 -p1
+
+%ifarch ppc64le
+%patch1 -p1
+%endif
 
 # workaround for rhbz#849713
 # http://mail.scipy.org/pipermail/numpy-discussion/2012-July/063530.html
@@ -260,6 +266,10 @@ popd &> /dev/null
 
 
 %changelog
+* Thu Aug 07 2014 jchaloup <jchaloup@redhat.com> - 1:1.7.1-11
+- resolves: #1125621
+  support for ppc64le, taken from private-rhel-7.0-ppc64le branch
+
 * Tue Mar 18 2014 Tomas Tomecek <ttomecek@redhat.com> - 1:1.7.1-10
 - fix changelog entry below
 
